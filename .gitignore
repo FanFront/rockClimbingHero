@@ -10,3 +10,9 @@ ios/
 *.keystore
 *.apk
 *.aab
+
+# Local Expo module source is hand-written; only the generated root app is ignored.
+!modules/*/android/
+!modules/*/android/**
+modules/*/android/build/
+modules/*/android/.gradle/
