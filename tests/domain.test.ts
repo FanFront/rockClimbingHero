@@ -31,3 +31,11 @@ test('reassessment saves history without fabricating skill evidence',()=>{
   assert.equal(next.assessments[0].ratings.PWR,5);
   assert.equal(skillProgress(next,'quiet-feet').rank,'Unexplored');
 });
+
+test('recovery logs do not advance climbing skill evidence',()=>{
+ const profile=createProfile('Alex',DEFAULT_RATINGS,date);
+ const entry={...entry('rest',20),activity:'recovery' as const,skill:'quiet-feet' as const};
+ const after=logSession(profile,entry);
+ assert.equal(skillProgress(after,'quiet-feet').days,0);
+ assert.equal(after.sessions[0].skill,null);
+});

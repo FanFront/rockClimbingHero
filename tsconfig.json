@@ -5,7 +5,11 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "types": [
+      "node",
+      "react"
+    ]
   },
   "include": [
     "**/*.ts",

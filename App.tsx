@@ -225,7 +225,7 @@ function Journal({data,onSave,onDelete,initialActivity,initialSkill,readiness}:{
    {activity==='bouldering'?<>
     <SectionLabel>CLIMB STYLE</SectionLabel><View style={styles.chipRow}>{STYLES.map(s=><Chip key={s} label={s} active={style===s} onPress={()=>setStyle(s)}/>)}</View>
     <View style={styles.twoColumns}><View style={{flex:1}}><SectionLabel>ATTEMPTS</SectionLabel><TextInput style={styles.input} value={attempts} onChangeText={setAttempts} keyboardType="number-pad"/></View><View style={{flex:1}}><SectionLabel>SENDS</SectionLabel><TextInput style={styles.input} value={sends} onChangeText={setSends} keyboardType="number-pad"/></View></View>
-    <SectionLabel>BEST GRADE ATTEMPTED (OPTIONAL)</SectionLabel><TextInput style={styles.input} value={grade} onChangeText={setGrade} autoCapitalize="characters" maxLength={3}/>
+    <SectionLabel>GRADE FOR THESE ATTEMPTS (OPTIONAL)</SectionLabel><TextInput style={styles.input} value={grade} onChangeText={setGrade} autoCapitalize="characters" maxLength={3}/>
     <Text style={styles.micro}>Best completed grade is calculated only from entries with sends above zero.</Text>
    </>:null}
    <SectionLabel>SKILL PRACTICED (OPTIONAL)</SectionLabel><View style={styles.chipRow}><Chip label="None" active={skill===null} onPress={()=>setSkill(null)}/>{SKILLS.map(s=><Chip key={s.id} label={s.title} active={skill===s.id} onPress={()=>setSkill(s.id)}/>)}</View>

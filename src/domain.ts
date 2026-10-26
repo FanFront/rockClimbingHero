@@ -70,14 +70,14 @@ export function bestGrade(data:AppData):string {
   return grades.length?'V'+Math.max(...grades):'—';
 }
 export function skillProgress(data:AppData,id:SkillId):{days:number;attested:boolean;rank:'Unexplored'|'Exploring'|'Practicing'|'Self-attested'} {
-  const days=new Set(data.sessions.filter(s=>s.skill===id&&!s.pain).map(s=>s.date.slice(0,10))).size;
+  const days=new Set(data.sessions.filter(s=>s.skill===id&&!s.pain&&s.activity!=='recovery').map(s=>s.date.slice(0,10))).size;
   const attested=data.demonstrations.some(d=>d.skill===id);
   const rank=attested&&days>=3?'Self-attested':days>=3?'Practicing':days>0?'Exploring':'Unexplored';
   return {days,attested,rank};
 }
 export function logSession(data:AppData,s:Session):AppData {
   if(data.sessions.some(x=>x.id===s.id))return data;
-  return {...data,sessions:[{...s,duration:safeMinutes(s.duration),effort:clampRating(s.effort),attempts:Math.max(0,Math.floor(s.attempts)),sends:Math.max(0,Math.min(Math.floor(s.sends),Math.floor(s.attempts)))},...data.sessions]};
+  return {...data,sessions:[{...s,skill:s.activity==='recovery'?null:s.skill,duration:safeMinutes(s.duration),effort:clampRating(s.effort),attempts:Math.max(0,Math.floor(s.attempts)),sends:Math.max(0,Math.min(Math.floor(s.sends),Math.floor(s.attempts)))},...data.sessions]};
 }
 export function deleteSession(data:AppData,id:string):AppData {return {...data,sessions:data.sessions.filter(s=>s.id!==id)};}
 export function reassess(data:AppData,ratings:Ratings,date:string):AppData {
