@@ -77,3 +77,18 @@ unchanged. Advice does not award XP or infer physical capability scores.
   native camera/media/Keystore, video payload acceptance and Android persistence
   through process death still need device validation. Do not interpret simulated
   responses as evidence of actual model quality.
+
+## Android delivery
+
+Release build succeeded on application source `012fd85`:
+https://github.com/FanFront/rockClimbingHero/actions/runs/40290337449
+
+ARM64 APK artifact:
+https://github.com/FanFront/rockClimbingHero/actions/runs/40290337449/artifacts/12636682112
+
+Later commits only add documentation/browser screenshots. Both the question form
+and saved answer are pictured (`ai-route-web-preview.png`,
+`ai-answer-web-preview.png`); responses in these browser previews are simulated.
+Successful compilation does not replace the live-provider and Android device
+checks listed above. GitHub artifact download requires repository access and is
+subject to repository retention settings.
