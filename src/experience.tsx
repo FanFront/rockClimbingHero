@@ -261,7 +261,11 @@ export function Completion({
   }, [reduced, arrived]);
   return (
     <View style={{ gap: 16 }}>
-      <CampScene direction="morning" reduced={reduced || arrived} marked />
+      <View style={{ height: 112, overflow: "hidden" }}>
+        <View style={{ position: "absolute", bottom: 0, width: "100%" }}>
+          <CampScene direction="morning" reduced={reduced || arrived} marked />
+        </View>
+      </View>
       <Text style={e.title}>
         {l === "en" ? "A page worth keeping" : "这一程，值得记住"}
       </Text>
