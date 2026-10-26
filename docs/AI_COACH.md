@@ -1,94 +1,104 @@
-# On-device AI climbing advice
+# Climb notebooks: one experiment, a result, then a better next question
 
-## User flows
+## Product intent
 
-- Camp → AI route advice: take a photo or choose one and ask about a route/color.
-- Journal → AI attempt review: record text, add a photo or short MP4. Each saved
-  session also has an analysis action that pre-fills duration, grade, style,
-  attempts, sends, effort, pain and notes. This is a snapshot; later session edits
-  do not rewrite the analysis. Deleting a session does not delete AI history.
-- Both flows persist the question, media copy, provider/model, date, status and
-  response locally, independently of progression. History is readable offline.
-  It is not auto-expired or capped. Delete analysis removes the local question,
-  answer and owned media copy; gallery originals remain.
+During-climbing support comes first. The notebook earns its place through a
+persistent, user-confirmed climb identity, fast offline outcome recording and
+context that carries into the next request. A generic photo question alone is
+not the product advantage. After climbing, the same records support a review of
+today on that climb. This is not a cross-route training diagnosis or a claim of
+superior model intelligence.
 
-## Keys, endpoints and sending
+## Actual flow
 
-Add named Qwen/DeepSeek profiles in **API keys & providers**; tap a saved profile
-to switch. Keys can be replaced or removed. Removal leaves history intact. Keys
-are stored with expo-secure-store (Android Keystore backed); SQLite contains only
-profile names, provider/model/endpoint metadata and the active profile ID.
-Keys never enter the coaching prompt, history or logs. Do not paste keys in chat.
+1. Camp → Continue climbing / route notebook. Choose an existing climb or name a
+   new one and an optional movement goal. Route identity is manual; the app never
+   assumes two red routes are the same. The active notebook survives restart.
+2. Record “Stuck here” and an optional observation without internet or a key.
+   Add a route photo or attempt video when requesting help.
+3. Ask for one next experiment. The provider receives a previewable snapshot of
+   this climb’s goal, recent attempts, previous advice, reported outcomes and any
+   explicitly selected training session. Current pain flags are included.
+4. The saved suggestion appears before the request form. Record Helped / No
+   change / Not tried / Sent / Pain with an optional note. Feedback displays the
+   advice it references. These are user reports, not measured improvement or XP.
+5. Open a follow-up to correct the interpretation or ask for the next experiment.
+   Prior advice and outcomes are included so the model can revise its suggestion.
+6. After climbing, select Today’s review. It includes only today’s attempt and
+   feedback records on this climb, and advice referenced by those records. The
+   prompt asks for evidence-based reflection and one future focus, not more load.
 
-Only explicit Send/Retry sends content directly from the phone to the selected
-provider via HTTPS. No project server, public media URL, or automatic analysis is
-used. Provider usage charges and provider-side retention policies apply. Local
-deletion does not claim to delete provider-side copies. There is no cloud sync.
-App uninstall/device loss removes local history; this is not a backup system.
+The model is asked for a brief observation, exactly one tentative experiment and
+an observable check afterward. Ambiguous holds should trigger a clarification.
+Pain reports should trigger stopping painful movement rather than another climb.
+These are prompt requirements, not a guarantee of model compliance or safety.
 
-Official endpoints only; Qwen endpoint must match the key's region/workspace.
-Default: China DashScope, `qwen3-vl-plus`. DeepSeek: `deepseek-flash`. Model field
-is editable for account availability. Unknown or unauthorized models return an
-error; media is never silently dropped or rerouted to another provider.
+## Context and ownership
 
-## Media support
+Context is limited to the last 12 attempt/feedback records and 4 relevant advice
+entries. Preview metadata reports included/total counts and whether truncated.
+The full local notebook is not truncated or auto-expired. Today's review uses the
+phone's local day; it does not imply a complete session summary beyond the selected
+climb and included records. “Not tried” is feedback, not a performed attempt.
 
-| Provider | Text | Photo | MP4 video |
-| --- | --- | --- | --- |
-| Qwen vision model | yes | yes | yes, visual content only |
-| DeepSeek Flash | yes | yes | no; choose Qwen |
+The latest image on the selected climb can be carried forward; the user can
+exclude it or replace it. Each sent entry owns its media copy. Original images
+in the gallery remain untouched. Video audio is not analyzed. New requests save
+a context snapshot before submission. Retry uses the same snapshot and history
+entry rather than silently changing its evidence. There are no automatic paid
+calls after recording outcomes.
 
-Sources verified 2026-10-26:
-- https://www.alibabacloud.com/help/en/model-studio/vision
-- https://api-docs.deepseek.com/guides/vision/
+Deleting one advice entry removes its media and its automatically copied advice
+from later request snapshots. User-authored observations and other generated
+responses remain their own records. Deleting the whole notebook removes its
+attempts, advice and owned media. Original training sessions, XP and profile data
+remain unchanged. Deleting a training session does not delete notebook snapshots.
+Old standalone analyses remain under Earlier unfiled analyses and can be manually
+filed under the selected climb or deleted. Existing key profiles remain available.
 
-Input supports JPEG, PNG, WebP and MP4 up to 12 MiB (one attachment per analysis).
-Images and videos are copied from temporary picker URIs into the app's document
-directory when the question is saved, before network submission. Video audio is
-not analyzed. Saved video opens through Android's media viewer. Camera permission
-is requested only when taking a photo; imported clips do not require recording
-audio. The picker plugin disables microphone permission.
+## Providers and keys
 
-## Failure and persistence rules
+Named Qwen/DeepSeek profiles can be added, switched, replaced and removed in
+Settings → Climbing coach, or the notebook's secondary Coach settings entry.
+SecureStore holds secrets using Android Keystore; SQLite holds only profile
+metadata and the active profile ID. Removing a key preserves notebooks/history.
+Only explicit advice/review/retry sends selected content directly to official
+HTTPS provider endpoints. There is no project relay or public media hosting.
+Provider usage charges and retention policies apply; local deletion does not
+claim to delete provider-side copies. App uninstall/device loss removes local
+history; notebooks are not a backup service.
 
-Questions are saved before network requests. An in-flight guard prevents repeated
-submissions. A 90-second timeout leaves the saved question/media available for
-manual retry. There are no automatic paid retries. Interrupted pending entries
-can be retried after restarting; retries update the same history entry using the
-currently selected key/provider. History mutations are serialized and responses
-only update existing entries, so deletion cannot resurrect a question. Deleting
-analysis removes its owned media before the history row; deletion failures remain
-visible/retryable. Original training data, rewards and language settings remain
-unchanged. Advice does not award XP or infer physical capability scores.
+- Qwen (`qwen3-vl-plus` default): text, photos and MP4 visual analysis.
+- DeepSeek (`deepseek-flash` default): text and photos. Video requests clearly
+  require Qwen; media is never silently dropped.
+- Qwen endpoint must match the account's region/workspace; model is editable for
+  account availability. JPEG, PNG, WebP and MP4 are limited to 12 MiB per request,
+  one attachment. Camera permission is requested on demand; no microphone access.
+- Request timeout is 90 seconds. Failed/interrupted entries remain for manual
+  retry. Local history and outcome recording remain usable offline.
 
-## Validation
+Provider sources verified 2026-10-26:
+https://www.alibabacloud.com/help/en/model-studio/vision
+https://api-docs.deepseek.com/guides/vision/
 
-- `npm run check`: TypeScript plus all 11 tests pass, including official-endpoint
-  restrictions, image/video request shapes, unsupported provider rejection,
-  response parsing, auth/empty-response errors, and existing reward regressions.
-- `npx expo install --check`: SDK-compatible versions.
-- 360×800 browser interaction: add Qwen profile; send route question; persist the
-  returned simulated answer; verify the ordinary profile index has no key value;
-  reload and reopen question/answer; switch to DeepSeek; retain a failed request;
-  retry without duplicate history; delete and reject late-response resurrection;
-  remove a key while retaining history. Screenshot: `evidence/ai-route-web-preview.png`.
-  Browser native storage, SecureStore, media and provider responses are substitutes.
-- No live provider credentials were supplied. Real-provider inference, billing,
-  native camera/media/Keystore, video payload acceptance and Android persistence
-  through process death still need device validation. Do not interpret simulated
-  responses as evidence of actual model quality.
+## Verification and limits
 
-## Android delivery
+- `npm run check`: TypeScript and all 16 tests pass, including context isolation,
+  feedback continuity, local-day review scope, truncation reporting, idempotent
+  outcomes and deletion of copied advice context, plus existing progression/API
+  checks. Final presentation changes also passed TypeScript.
+- Browser at 360×800: create notebook; record an offline sticking point before
+  any API call; get a simulated cue; report No change and a route correction;
+  verify the next payload includes the cue and feedback, excludes unfiled old
+  analysis; request today's review; reload and find the notebook, outcomes and
+  earlier analyses. Screenshot: `evidence/climb-next-step-web-preview.png`.
+- Browser native storage, secure keys, media and provider responses were
+  substituted. The displayed alternative cue is scripted demonstration data,
+  not proof that a live model followed the correction.
+- Real-provider quality, native camera/video/Keystore, touch and keyboard behavior,
+  and Android persistence through process death still require device validation.
+  No Android screenshot or device recording is claimed.
 
-Release build succeeded on application source `012fd85`:
-https://github.com/FanFront/rockClimbingHero/actions/runs/40290337449
-
-ARM64 APK artifact:
-https://github.com/FanFront/rockClimbingHero/actions/runs/40290337449/artifacts/12636682112
-
-Later commits only add documentation/browser screenshots. Both the question form
-and saved answer are pictured (`ai-route-web-preview.png`,
-`ai-answer-web-preview.png`); responses in these browser previews are simulated.
-Successful compilation does not replace the live-provider and Android device
-checks listed above. GitHub artifact download requires repository access and is
-subject to repository retention settings.
+Acceptance should focus on whether users can record a result quickly, understand
+what to try, correct the assistant without re-explaining the climb, and find a
+useful review afterward. User preference and live advice quality remain open.
