@@ -1,4 +1,4 @@
-import React,{useEffect,useMemo,useRef,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import {Alert,KeyboardAvoidingView,Pressable,ScrollView,StatusBar,StyleSheet,Text,TextInput,View} from 'react-native';
 import {SafeAreaProvider,SafeAreaView} from 'react-native-safe-area-context';
 import {MountainVista,HeroSprite,PixelGlyph,PixelMap} from './src/art';
@@ -6,7 +6,7 @@ import {C} from './src/theme';
 import {
  ATTRIBUTES,ATTRIBUTE_LABELS,ATTRIBUTE_COLORS,QUESTIONS,DEFAULT_RATINGS,SKILLS,
  createProfile,latestRatings,heroLevel,levelBounds,totalXP,skillProgress,bestGrade,
- logSession,deleteSession,reassess,recommendedQuest,countTrainingDays,ratingScore,
+ logSession,deleteSession,reassess,recommendedQuest,countTrainingDays,ratingScore,sessionXP,
  type Ratings,type Attribute,type Activity,type ClimbStyle,type SkillId,type Readiness,
  type AppData,type Session
 } from './src/domain';
@@ -37,7 +37,7 @@ function Chip({label,active,onPress}:{label:string;active:boolean;onPress:()=>vo
  return <Pressable accessibilityRole="button" onPress={onPress} style={[styles.chip,active?styles.chipActive:null]}><Text style={[styles.chipText,active?{color:C.bg}:null]}>{label}</Text></Pressable>;
 }
 function Meter({value,max=100,color=C.gold}:{value:number;max?:number;color?:string}){
- return <View style={styles.meterTrack}><View style={{height:'100%',width:(Math.max(0,Math.min(1,value/Math.max(1,max)))*100)+'%',backgroundColor:color}}/></View>;
+ return <View style={styles.meterTrack}><View style={{height:'100%',width:((Math.max(0,Math.min(1,value/Math.max(1,max)))*100)+'%') as `${number}%`,backgroundColor:color}}/></View>;
 }
 function Stat({code,rating}:{code:Attribute;rating:number}){
  const score=ratingScore(rating);
@@ -168,7 +168,7 @@ function Progress({data,onReassess}:{data:AppData;onReassess:()=>void}){
   </P>
   <P title="THE LAST SEVEN DAYS" icon="mountain">
    <View style={styles.weekBars}>{recentDays.map((d,i)=>{const n=data.sessions.filter(s=>s.date.startsWith(d)).length;return <View key={d} style={styles.weekColumn}>
-    <Text style={styles.micro}>{n||''}</Text><View style={styles.barHolder}><View style={{height:(n?Math.min(100,18+n*24):7)+'%',backgroundColor:n?C.gold:C.line,width:22}}/></View><Text style={styles.micro}>{'SMTWTFS'[new Date(d+'T12:00:00').getDay()]}</Text></View>;})}</View>
+    <Text style={styles.micro}>{n||''}</Text><View style={styles.barHolder}><View style={{height:((n?Math.min(100,18+n*24):7)+'%') as `${number}%`,backgroundColor:n?C.gold:C.line,width:22}}/></View><Text style={styles.micro}>{'SMTWTFS'[new Date(d+'T12:00:00').getDay()]}</Text></View>;})}</View>
    <Text style={styles.micro}>Session counts, not workload or a training prescription.</Text>
   </P>
   <P title="ATTRIBUTE HISTORY" icon="star" action={<Pressable onPress={onReassess}><Text style={styles.actionLink}>NEW CHECK-IN →</Text></Pressable>}>
@@ -182,9 +182,9 @@ function Progress({data,onReassess}:{data:AppData;onReassess:()=>void}){
   <P title="LATEST SESSIONS" icon="journal">
    {data.sessions.length===0?<Description>Your story begins with your first logged climb or workout.</Description>:data.sessions.slice(0,5).map(s=><View key={s.id} style={styles.historyRow}>
      <View style={{flex:1}}><Text style={styles.body}>{s.activity.toUpperCase()} · {s.duration} MIN</Text><Text style={styles.micro}>{today(s.date)} · {s.style} {s.sends>0?'· '+s.sends+' sends':''}</Text></View>
-     <Text style={styles.good}>+{s.pain?0:Math.max(0,10+Math.floor(s.duration/10)*3)}*</Text>
+     <Text style={styles.good}>+{sessionXP(s)}*</Text>
     </View>)}
-   <Text style={styles.micro}>*Approximate base XP displayed in list; exact capped rewards are included in total XP.</Text>
+   <Text style={styles.micro}>Rewards are calculated from each saved log and capped per session.</Text>
   </P>
  </>;
 }
@@ -267,7 +267,6 @@ export default function App(){
     setProfile({...profile,demonstrations:[{id:newId(),date:new Date().toISOString(),skill,note,kind:'self-attested'},...profile.demonstrations]});
     Alert.alert('Reflection recorded','Your skill is now marked as self-attested, not coach-verified.');
  };
- const selected=useMemo(()=>profile?recommendedQuest(profile,readiness):null,[profile,readiness]);
  if(!loaded)return <SafeAreaProvider><SafeAreaView style={styles.screen}><View style={styles.loading}><PixelGlyph size={72}/><Text style={styles.logo}>ASCENT</Text><Description>Opening expedition journal...</Description></View></SafeAreaView></SafeAreaProvider>;
  return <SafeAreaProvider><SafeAreaView style={styles.screen} edges={['top','bottom']}>
   <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
