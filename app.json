@@ -19,6 +19,17 @@
     "jsEngine": "hermes",
     "extra": {
       "appTheme": "ASCENT Expedition RPG"
-    }
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "recordAudioAndroid": false,
+          "microphonePermission": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      "expo-asset"
+    ]
   }
 }
