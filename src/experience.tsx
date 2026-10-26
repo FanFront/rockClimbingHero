@@ -14,7 +14,7 @@ import {
   type AudioPlayer,
 } from "expo-audio";
 import * as Haptics from "expo-haptics";
-import { C } from "./theme";
+import { C, UI } from "./theme";
 import { CampScene, type CampDirection } from "./CampScene";
 import { t, type Language } from "./i18n";
 import type { Session } from "./domain";
@@ -182,7 +182,12 @@ export function CampHome({
             : "The mountains remain. Every climb deserves a memory."}
         </Text>
       </View>
-      <CampScene direction={direction} reduced={reduced} marked={!!latest} />
+      <CampScene
+        panorama
+        direction={direction}
+        reduced={reduced}
+        marked={!!latest}
+      />
       <Pressable
         accessibilityRole="button"
         onPress={record}
@@ -321,20 +326,26 @@ const e = StyleSheet.create({
   copy: { fontSize: 15, color: C.muted, lineHeight: 24 },
   darkCopy: { fontSize: 13, color: "#35483f", lineHeight: 22 },
   primary: {
-    backgroundColor: "#e8bd7d",
+    backgroundColor: C.gold,
     padding: 16,
     minHeight: 64,
-    borderBottomWidth: 4,
-    borderBottomColor: "#987348",
+    borderRadius: 14,
   },
   primaryText: { fontSize: 19, fontWeight: "bold", color: "#1b302f" },
-  secondary: { minHeight: 48, justifyContent: "center", padding: 12 },
+  secondary: {
+    minHeight: 50,
+    justifyContent: "center",
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: C.panel2,
+  },
   memory: {
     padding: 18,
     gap: 8,
     backgroundColor: C.panel,
-    borderLeftWidth: 3,
-    borderLeftColor: C.gold,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.line,
   },
   link: { fontSize: 15, color: C.gold, lineHeight: 24 },
 });

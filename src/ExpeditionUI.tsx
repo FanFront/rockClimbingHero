@@ -1,3 +1,4 @@
+import { Action, Segmented, SectionHeading, EmptyState } from "./UI";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -21,7 +22,7 @@ import {
 } from "./expedition";
 import { PixelGlyph } from "./art";
 import { attr, t, type Language } from "./i18n";
-import { C } from "./theme";
+import { C, UI } from "./theme";
 import { media } from "./media";
 const uid = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -30,21 +31,25 @@ function B({
   text,
   press,
   active = false,
+  primary = false,
+  danger = false,
 }: {
   text: string;
   press: () => void;
   active?: boolean;
+  primary?: boolean;
+  danger?: boolean;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
+    <Action
+      label={text}
       onPress={press}
-      style={[s.button, active && { borderColor: C.gold }]}
-    >
-      <Text style={s.text}>{text}</Text>
-    </Pressable>
+      selected={active}
+      tone={danger ? "danger" : primary ? "primary" : "choice"}
+    />
   );
 }
+
 export function Board({
   p,
   l,
@@ -149,6 +154,7 @@ export function Board({
             {!safe && <Text style={s.muted}>{t(l, "safety")}</Text>}
             {!expired && !done && safe && (
               <B
+                primary
                 text={
                   q.acceptedAt
                     ? title("去记录", "Record activity")
@@ -178,23 +184,18 @@ export function Board({
   const q = all.find((q) => q.id === selected);
   return (
     <>
-      <View style={s.row}>
-        {[
-          ["day", "今日", "Today"],
-          ["week", "本周", "Week"],
-          ["done", "历史", "History"],
-        ].map(([id, zh, enText]) => (
-          <B
-            key={id}
-            text={title(zh, enText)}
-            active={section === id}
-            press={() => {
-              setSection(id);
-              setSelected(null);
-            }}
-          />
-        ))}
-      </View>
+      <Segmented
+        value={section}
+        options={[
+          { id: "day", label: title("今日", "Today") },
+          { id: "week", label: title("本周", "Week") },
+          { id: "done", label: title("已结束", "History") },
+        ]}
+        onChange={(id) => {
+          setSection(id);
+          setSelected(null);
+        }}
+      />
       {q ? (
         <>
           <B
@@ -214,7 +215,15 @@ export function Board({
           </Pressable>
         ))
       )}
-      {!visible.length && <Text style={s.muted}>{t(l, "empty")}</Text>}
+      {!visible.length && (
+        <EmptyState
+          title={title("这里暂时没有委托", "No commissions here yet")}
+          description={title(
+            "看看其他分类，或者把今天留给休息。",
+            "Explore another category, or take today at your own pace.",
+          )}
+        />
+      )}
     </>
   );
 }
@@ -341,7 +350,13 @@ export function Gallery({
     const update = (patch: Partial<Route>) => setEditing({ ...r, ...patch });
     return (
       <>
-        <Text style={s.title}>{tr("线路档案", "Route record")}</Text>
+        <SectionHeading
+          title={tr("线路档案", "Route record")}
+          note={tr(
+            "把这条线路的细节整理在一起。",
+            "Keep this climb’s details together.",
+          )}
+        />
         {input(tr("名称 / 编号", "Name / number"), r.name, (v) =>
           update({ name: v }),
         )}
@@ -363,6 +378,7 @@ export function Gallery({
             ),
           )}
         </View>
+        <SectionHeading title={tr("这次的尝试", "This attempt")} />
         {input(
           t(l, "attempts"),
           String(r.attempts),
@@ -385,6 +401,13 @@ export function Gallery({
           {new Date(r.date).toLocaleString(l)} ·{" "}
           {tr("时间沿用训练会话", "Time from session")}
         </Text>
+        <SectionHeading
+          title={tr("记住你的解法", "Keep your beta")}
+          note={tr(
+            "感想和媒体均为可选，不阻塞保存。",
+            "Notes and media are optional.",
+          )}
+        />
         {input(tr("感想 / 个人 beta", "Notes / beta"), r.notes, (v) =>
           update({ notes: v }),
         )}
@@ -436,6 +459,7 @@ export function Gallery({
           )}
         </Text>
         <B
+          primary
           text={t(l, "save")}
           press={() => {
             if (
@@ -466,6 +490,7 @@ export function Gallery({
         <B text={t(l, "cancel")} press={() => setEditing(null)} />
         {p.routes?.some((x) => x.id === r.id) && (
           <B
+            danger
             text={t(l, "delete")}
             press={() =>
               Alert.alert(t(l, "delete"), t(l, "deletePrompt"), [
@@ -492,7 +517,22 @@ export function Gallery({
   }
   return (
     <>
-      <Text style={s.title}>{tr("线路图鉴", "Route collection")}</Text>
+      <SectionHeading
+        title={tr("线路收藏", "Route collection")}
+        note={tr(
+          `${routes.length} 条线路 · 点开继续整理`,
+          `${routes.length} routes · open one to revisit`,
+        )}
+      />
+      {!routes.length && (
+        <EmptyState
+          title={tr("为第一条线路留个位置", "Make room for your first route")}
+          description={tr(
+            "从下方的抱石训练中选择一次，添加名称、难度和自己的解法。",
+            "Choose a bouldering session below, then add its grade and your beta.",
+          )}
+        />
+      )}
       <View style={s.wrap}>
         {[
           ["recent", "最近", "Recent"],
@@ -515,7 +555,10 @@ export function Gallery({
         <Pressable
           accessibilityRole="button"
           key={r.id}
-          style={s.panel}
+          style={({ pressed }) => [
+            s.panel,
+            pressed && { backgroundColor: C.panel2 },
+          ]}
           onPress={() => setEditing({ ...r, media: [...r.media] })}
         >
           <View style={s.row}>
@@ -560,18 +603,12 @@ export function Gallery({
   );
 }
 const s = StyleSheet.create({
-  panel: {
-    backgroundColor: C.panel,
-    borderWidth: 1,
-    borderColor: C.line,
-    padding: 12,
-    gap: 8,
-  },
+  panel: { ...UI.panel },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  wrap: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  title: { color: C.cream, fontSize: 18, fontWeight: "800" },
-  text: { color: C.cream, fontSize: 14, lineHeight: 22 },
-  muted: { color: C.muted, fontSize: 12, lineHeight: 18 },
+  wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  title: { ...UI.title, fontSize: 19, lineHeight: 28 },
+  text: { ...UI.body },
+  muted: { ...UI.muted },
   gold: { color: C.gold, fontSize: 12, lineHeight: 20 },
   button: {
     minHeight: 44,
@@ -581,13 +618,6 @@ const s = StyleSheet.create({
     backgroundColor: C.panel2,
     justifyContent: "center",
   },
-  input: {
-    color: C.cream,
-    borderWidth: 1,
-    borderColor: C.line,
-    minHeight: 44,
-    padding: 10,
-    fontSize: 16,
-  },
+  input: { ...UI.input, marginTop: 6 },
   track: { height: 6, backgroundColor: C.line },
 });

@@ -1,3 +1,4 @@
+import { Action, Segmented, SectionHeading, type ActionTone } from "./UI";
 import {
   coachingContext,
   type ClimbProject,
@@ -44,7 +45,7 @@ import {
   retainAttachment,
   attachmentData,
 } from "./aiStorage";
-import { C } from "./theme";
+import { C, UI } from "./theme";
 import type { Language } from "./i18n";
 import type { Session } from "./domain";
 export function AICoach({
@@ -91,6 +92,7 @@ export function AICoach({
     [attemptNote, setAttemptNote] = useState(""),
     [intent, setIntent] = useState<"next" | "review">("next"),
     [showContext, setShowContext] = useState(false),
+    [advanced, setAdvanced] = useState(false),
     [legacy, setLegacy] = useState(false);
   const project = climbs.find((p) => p.id === climbId);
   const related = entries.filter((e) => e.climbId === climbId);
@@ -155,21 +157,20 @@ export function AICoach({
     fn: () => void,
     active = false,
     disabled = false,
+    tone: ActionTone = "secondary",
   ) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled: disabled || busy, selected: active }}
-      disabled={disabled || busy}
+    <Action
+      label={label}
       onPress={fn}
-      style={[
-        s.button,
-        active && s.active,
-        (disabled || busy) && { opacity: 0.5 },
-      ]}
-    >
-      <Text style={[s.text, active && { color: C.bg }]}>{label}</Text>
-    </Pressable>
+      selected={active}
+      disabled={disabled || busy}
+      tone={active ? "choice" : tone}
+    />
   );
+  const primaryAction = (label: string, fn: () => void, disabled = false) =>
+    action(label, fn, false, disabled, "primary");
+  const destructive = (label: string, fn: () => void) =>
+    action(label, fn, false, false, "danger");
   const field = (
     label: string,
     value: string,
@@ -453,8 +454,8 @@ export function AICoach({
     <View style={{ gap: 14 }}>
       <Text style={s.muted}>
         {copy(
-          "同一条线路，一次只试一个变化。记录尝试可离线完成；只有点击获取建议或回顾才发送下方可查看的线路上下文与媒体（可能收费，视频不分析声音）。",
-          "One climb, one experiment at a time. Record outcomes offline. Only advice/review requests send the previewed climb context and media to your provider (charges may apply; no video audio).",
+          "一次只试一个变化。尝试和反馈随时可离线记下。",
+          "One experiment at a time. Keep attempts and feedback offline, whenever you need.",
         )}
       </Text>
       {error && (
@@ -540,15 +541,32 @@ export function AICoach({
             setName,
           )}
           {field("API key", secret, setSecret, true)}
-          {field("HTTPS API base URL", baseURL, setBaseURL)}
-          <Text style={s.muted}>
-            {copy(
-              "Qwen 地址须与密钥地域一致；支持官方 DashScope 或工作空间地址。",
-              "Qwen endpoint must match your key region; official DashScope and workspace endpoints are supported.",
-            )}
-          </Text>
-          {field(copy("模型", "Model"), model, setModel)}
           {action(
+            advanced
+              ? copy("收起连接设置", "Hide connection settings")
+              : copy(
+                  "地区、模型与连接设置",
+                  "Region, model & connection settings",
+                ),
+            () => setAdvanced(!advanced),
+            false,
+            false,
+            "quiet",
+          )}
+          {advanced && (
+            <>
+              {" "}
+              {field("HTTPS API base URL", baseURL, setBaseURL)}
+              <Text style={s.muted}>
+                {copy(
+                  "Qwen 地址须与密钥地域一致；支持官方 DashScope 或工作空间地址。",
+                  "Qwen endpoint must match your key region; official DashScope and workspace endpoints are supported.",
+                )}
+              </Text>
+              {field(copy("模型", "Model"), model, setModel)}
+            </>
+          )}
+          {primaryAction(
             copy("安全保存密钥", "Save key securely"),
             () => {
               if (lock.current) return;
@@ -583,7 +601,6 @@ export function AICoach({
                   onBusy(false);
                 });
             },
-            true,
             !name.trim() || !secret.trim(),
           )}
           {editing &&
@@ -641,7 +658,7 @@ export function AICoach({
                 goal,
                 setGoal,
               )}
-              {action(
+              {primaryAction(
                 copy("建立线路手记", "Start climb notebook"),
                 () =>
                   void localChange(async () => {
@@ -659,7 +676,6 @@ export function AICoach({
                     setClimbName("");
                     setGoal("");
                   }),
-                false,
                 !climbName.trim(),
               )}
             </>
@@ -912,7 +928,13 @@ export function AICoach({
                       {outgoingMedia?.name || copy("无媒体", "No media")}
                     </Text>
                   )}
-                  {action(
+                  <Text style={s.muted}>
+                    {copy(
+                      "点击获取建议将向当前服务商发送已预览的线路上下文与所选媒体，可能产生费用。视频只分析画面。",
+                      "Requesting advice sends the previewed climb context and selected media to your provider; charges may apply. Video visuals only.",
+                    )}
+                  </Text>
+                  {primaryAction(
                     busy
                       ? copy("分析中…", "Analyzing…")
                       : intent === "review"
@@ -922,7 +944,6 @@ export function AICoach({
                             "One experiment for next attempt",
                           ),
                     () => void run(),
-                    true,
                     !project ||
                       (intent === "review" &&
                         !project.attempts.some(
@@ -967,7 +988,7 @@ export function AICoach({
                       e.question.slice(0, 55),
                     () => setDetail(e.id),
                   )}
-                  {action(copy("删除这条建议", "Delete this advice"), () =>
+                  {destructive(copy("删除这条建议", "Delete this advice"), () =>
                     remove(e),
                   )}
                   <Text style={s.muted}>
@@ -975,7 +996,7 @@ export function AICoach({
                   </Text>
                 </View>
               ))}
-              {action(
+              {destructive(
                 copy("删除整条线路手记", "Delete this climb notebook"),
                 () =>
                   Alert.alert(
@@ -1025,8 +1046,9 @@ export function AICoach({
                           updateAIEntry({ ...e, climbId: project.id }),
                         ),
                     )}
-                  {action(copy("删除旧分析", "Delete earlier analysis"), () =>
-                    remove(e),
+                  {destructive(
+                    copy("删除旧分析", "Delete earlier analysis"),
+                    () => remove(e),
                   )}
                 </View>
               ))}
@@ -1046,25 +1068,11 @@ const s = StyleSheet.create({
     backgroundColor: C.panel2,
   },
   active: { backgroundColor: C.gold },
-  text: { fontSize: 15, lineHeight: 24, color: C.cream },
-  muted: { fontSize: 13, lineHeight: 21, color: C.muted },
-  heading: { fontSize: 20, lineHeight: 29, color: C.gold },
-  input: {
-    minHeight: 48,
-    padding: 12,
-    fontSize: 16,
-    color: C.cream,
-    borderWidth: 1,
-    borderColor: C.line,
-    backgroundColor: C.bg,
-  },
-  card: {
-    padding: 12,
-    gap: 12,
-    backgroundColor: C.panel,
-    borderLeftWidth: 2,
-    borderLeftColor: C.gold,
-  },
+  text: { ...UI.body },
+  muted: { ...UI.muted },
+  heading: { ...UI.title, fontSize: 20 },
+  input: { ...UI.input },
+  card: { ...UI.panel },
   image: { width: "100%", height: 200 },
   error: { color: C.danger, fontSize: 15, lineHeight: 23 },
 });
