@@ -102,3 +102,15 @@ https://api-docs.deepseek.com/guides/vision/
 Acceptance should focus on whether users can record a result quickly, understand
 what to try, correct the assistant without re-explaining the climb, and find a
 useful review afterward. User preference and live advice quality remain open.
+
+## Installable version
+
+Android release build succeeded on app source `f043233`:
+https://github.com/FanFront/rockClimbingHero/actions/runs/40294722865
+
+ARM64 APK download:
+https://github.com/FanFront/rockClimbingHero/actions/runs/40294722865/artifacts/12637833998
+
+Later commits change only documentation/screenshots. Artifact downloads require
+repository access and follow GitHub retention limits. Device validation and live
+provider evaluation remain outstanding as described above.
