@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   AppState,
@@ -34,6 +34,10 @@ export function useExperience(inCamp: boolean) {
   const [players, setPlayers] = useState<
     Partial<Record<keyof typeof sources, AudioPlayer>>
   >({});
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
   const [error, setError] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -114,7 +118,9 @@ export function useExperience(inCamp: boolean) {
       if (p)
         void p
           .seekTo(0)
-          .then(() => p.play())
+          .then(() => {
+            if (activeRef.current && !mutedRef.current) p.play();
+          })
           .catch(() => {});
     }
     if (name === "saved")
@@ -246,13 +252,13 @@ export function Completion({
 }) {
   const [arrived, setArrived] = useState(reduced);
   useEffect(() => {
-    if (reduced) return;
+    if (reduced || arrived) return;
     const timer = setTimeout(() => {
       setArrived(true);
       cue("arrival");
     }, 650);
     return () => clearTimeout(timer);
-  }, [reduced]);
+  }, [reduced, arrived]);
   return (
     <View style={{ gap: 16 }}>
       <CampScene direction="morning" reduced={reduced || arrived} marked />
@@ -276,7 +282,7 @@ export function Completion({
           ? "Your journal page is saved in camp."
           : "手记已存入营地。下次回来，还能翻开这一页。"}
       </Text>
-      {!arrived && (
+      {!arrived && !reduced && (
         <Pressable
           accessibilityRole="button"
           style={e.secondary}

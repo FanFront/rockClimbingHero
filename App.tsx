@@ -737,6 +737,8 @@ export default function App() {
   const experience = useExperience(
     tab === "camp" && !completion && loaded && !!p,
   );
+  const [savingSession, setSavingSession] = useState(false);
+  const savingSessionRef = useRef(false);
   const queue = useRef(Promise.resolve());
   const { height } = useWindowDimensions();
   const [gallery, setGallery] = useState(false);
@@ -746,6 +748,7 @@ export default function App() {
   readinessRef.current = readiness;
   useEffect(() => {
     const timer = setInterval(() => {
+      if (savingSessionRef.current) return;
       const current = profileRef.current;
       if (current) {
         const next = ensureCommissions(current, readinessRef.current);
@@ -788,6 +791,7 @@ export default function App() {
   };
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (savingSessionRef.current) return true;
       if (tab !== "camp") {
         setTab("camp");
         return true;
@@ -856,7 +860,14 @@ export default function App() {
       .catch(() => {})
       .then(() => saveProfile(saved));
     queue.current = pending.catch(() => {});
-    await pending;
+    savingSessionRef.current = true;
+    setSavingSession(true);
+    try {
+      await pending;
+    } finally {
+      savingSessionRef.current = false;
+      setSavingSession(false);
+    }
     profileRef.current = saved;
     setP(saved);
     setSaveError(false);
@@ -872,6 +883,7 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView style={s.screen}>
         <KeyboardAvoidingView
+          pointerEvents={savingSession ? "none" : "auto"}
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
