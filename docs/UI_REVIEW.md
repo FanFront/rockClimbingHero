@@ -95,3 +95,17 @@ large system font sizes, real camera/media/Keystore/audio, device performance an
 native persistence through process death. No Android screenshots or recording
 are claimed. User preference and usability must be judged by using the installable
 version; the screenshots and passing tests cannot establish those outcomes.
+
+## Installable Android version
+
+Final build succeeded on application source `6e9fb0c` (including the receipt
+repeated-tap fix):
+https://github.com/FanFront/rockClimbingHero/actions/runs/40299435213
+
+ARM64 APK artifact:
+https://github.com/FanFront/rockClimbingHero/actions/runs/40299435213/artifacts/12639882003
+
+Later commits only add documentation and browser evidence. Artifact downloads
+require repository access and expire according to GitHub retention settings.
+This UI PR is stacked on the climb notebook PR; the APK contains both features.
+Device verification remains outstanding. Passing a build is not usability acceptance.
