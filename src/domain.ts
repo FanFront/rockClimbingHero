@@ -1,3 +1,11 @@
+import {
+  questXP,
+  settle,
+  localDay,
+  type Commission,
+  type Ledger,
+  type Route,
+} from "./expedition";
 export const ATTRIBUTES = ['PWR','TEC','END','MOB','MND'] as const;
 export type Attribute = typeof ATTRIBUTES[number];
 export type Ratings = Record<Attribute,number>;
@@ -14,8 +22,19 @@ export type Session = {
 };
 export type Demonstration = {id:string; date:string; skill:SkillId; note:string; kind:'self-attested'};
 export type AppData = {
-  schema:1; name:string; createdAt:string;
-  assessments:Assessment[]; sessions:Session[]; demonstrations:Demonstration[];
+  schema: 1;
+  world?: import("./living").World;
+  name: string;
+  createdAt: string;
+  commissions?: Commission[];
+  questLedger?: Ledger[];
+  routes?: Route[];
+  detailedRouteSessions?: string[];
+  readiness?: Readiness;
+  rewardCapFrom?: string;
+  assessments: Assessment[];
+  sessions: Session[];
+  demonstrations: Demonstration[];
 };
 export const ATTRIBUTE_LABELS: Record<Attribute,string> = {
   PWR:'Power',TEC:'Technique',END:'Endurance',MOB:'Mobility',MND:'Mind'
@@ -50,24 +69,65 @@ export function createProfile(name:string, ratings:Ratings, date=new Date().toIS
 }
 export function latestRatings(data:AppData):Ratings {return data.assessments[0]?.ratings ?? DEFAULT_RATINGS;}
 export function safeMinutes(n:number):number {return Math.max(5,Math.min(240,Math.round(Number.isFinite(n)?n:30)));}
-export function sessionXP(s:Session):number {
-  const duration=safeMinutes(s.duration);
-  if(s.pain) return 0; // Recording activity while in pain never yields training XP.
-  if(s.activity==='recovery') return Math.min(12,4+Math.floor(duration/15)*2);
-  const base=10+Math.floor(duration/10)*3;
-  const sendsBonus=s.activity==='bouldering'?Math.min(12,Math.max(0,s.sends)*2):0;
-  return Math.min(60,base+sendsBonus);
+export function sessionXP(s: Session): number {
+  const duration = safeMinutes(s.duration);
+  if (s.pain && s.activity !== "recovery") return 0; // Recording activity while in pain never yields training XP.
+  if (s.activity === "recovery")
+    return Math.min(12, 4 + Math.floor(duration / 15) * 2);
+  const base = 10 + Math.floor(duration / 10) * 3;
+  const sendsBonus =
+    s.activity === "bouldering" ? Math.min(12, Math.max(0, s.sends) * 2) : 0;
+  return Math.min(60, base + sendsBonus);
 }
-export function totalXP(data:AppData):number {return data.sessions.reduce((sum,s)=>sum+sessionXP(s),0);}
+export function totalXP(data: AppData): number {
+  const days = new Map<string, number>();
+  let xp = 0;
+  for (const s of [...data.sessions].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  )) {
+    const day = localDay(s.date);
+    const used = days.get(day) || 0;
+    const reward =
+      data.rewardCapFrom && s.date >= data.rewardCapFrom
+        ? Math.min(sessionXP(s), Math.max(0, 120 - used))
+        : sessionXP(s);
+    if (data.rewardCapFrom && s.date >= data.rewardCapFrom)
+      days.set(day, used + reward);
+    xp += reward;
+  }
+  return xp + questXP(data);
+}
 export function heroLevel(xp:number):number {return 1+Math.floor(Math.sqrt(Math.max(0,xp)/80));}
 export function levelBounds(level:number):{from:number;to:number} {
   return {from:Math.pow(level-1,2)*80,to:Math.pow(level,2)*80};
 }
-export function bestGrade(data:AppData):string {
-  const grades=data.sessions.filter(s=>s.activity==='bouldering'&&s.sends>0)
-    .map(s=>{const m=/^V(\d{1,2})$/i.exec(s.grade.trim());return m?Number(m[1]):-1;})
-    .filter(n=>n>=0);
-  return grades.length?'V'+Math.max(...grades):'—';
+export function bestGrade(data: AppData): string {
+  const routeGrades = (data.routes || [])
+    .filter(
+      (r) =>
+        r.sends > 0 &&
+        data.sessions.some(
+          (s) => s.id === r.sessionId && s.activity === "bouldering",
+        ),
+    )
+    .map((r) => {
+      const m = /^V(\d{1,2})$/i.exec(r.grade.trim());
+      return m ? Number(m[1]) : -1;
+    });
+  const grades = data.sessions
+    .filter(
+      (s) =>
+        s.activity === "bouldering" &&
+        s.sends > 0 &&
+        !data.detailedRouteSessions?.includes(s.id),
+    )
+    .map((s) => {
+      const m = /^V(\d{1,2})$/i.exec(s.grade.trim());
+      return m ? Number(m[1]) : -1;
+    })
+    .filter((n) => n >= 0);
+  const all = [...grades, ...routeGrades].filter((n) => n >= 0);
+  return all.length ? "V" + Math.max(...all) : "—";
 }
 export function skillProgress(data:AppData,id:SkillId):{days:number;attested:boolean;rank:'Unexplored'|'Exploring'|'Practicing'|'Self-attested'} {
   const days=new Set(data.sessions.filter(s=>s.skill===id&&!s.pain&&s.activity!=='recovery').map(s=>s.date.slice(0,10))).size;
@@ -75,11 +135,33 @@ export function skillProgress(data:AppData,id:SkillId):{days:number;attested:boo
   const rank=attested&&days>=3?'Self-attested':days>=3?'Practicing':days>0?'Exploring':'Unexplored';
   return {days,attested,rank};
 }
-export function logSession(data:AppData,s:Session):AppData {
-  if(data.sessions.some(x=>x.id===s.id))return data;
-  return {...data,sessions:[{...s,skill:s.activity==='recovery'?null:s.skill,duration:safeMinutes(s.duration),effort:clampRating(s.effort),attempts:Math.max(0,Math.floor(s.attempts)),sends:Math.max(0,Math.min(Math.floor(s.sends),Math.floor(s.attempts)))},...data.sessions]};
+export function logSession(data: AppData, s: Session): AppData {
+  if (data.sessions.some((x) => x.id === s.id)) return data;
+  return settle({
+    ...data,
+    sessions: [
+      {
+        ...s,
+        skill: s.activity === "recovery" ? null : s.skill,
+        duration: safeMinutes(s.duration),
+        effort: clampRating(s.effort),
+        attempts: Math.max(0, Math.floor(s.attempts)),
+        sends: Math.max(
+          0,
+          Math.min(Math.floor(s.sends), Math.floor(s.attempts)),
+        ),
+      },
+      ...data.sessions,
+    ],
+  });
 }
-export function deleteSession(data:AppData,id:string):AppData {return {...data,sessions:data.sessions.filter(s=>s.id!==id)};}
+export function deleteSession(data: AppData, id: string): AppData {
+  return settle({
+    ...data,
+    sessions: data.sessions.filter((s) => s.id !== id),
+    routes: (data.routes || []).filter((r) => r.sessionId !== id),
+  });
+}
 export function reassess(data:AppData,ratings:Ratings,date:string):AppData {
   return {...data,assessments:[{id:'a-'+Date.parse(date),date,ratings:Object.fromEntries(ATTRIBUTES.map(a=>[a,clampRating(ratings[a])])) as Ratings},...data.assessments]};
 }

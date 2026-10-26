@@ -1,6 +1,9 @@
+import { LivingCamp } from "./src/LivingCamp";
+import { beginAdventure, reconcileWorld } from "./src/living";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   Modal,
   Pressable,
   ScrollView,
@@ -13,6 +16,14 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { MountainVista, HeroSprite, PixelGlyph, PixelMap } from "./src/art";
+import { Board, Gallery } from "./src/ExpeditionUI";
+import {
+  ensureCommissions,
+  settle,
+  growth,
+  templateOf,
+  type Commission,
+} from "./src/expedition";
 import { C } from "./src/theme";
 import {
   ATTRIBUTES,
@@ -91,6 +102,21 @@ function Button({
     >
       <Text style={[s.buttonText, active && { color: C.bg }]}>{label}</Text>
     </Pressable>
+  );
+}
+function RewardArt() {
+  const scale = useRef(new Animated.Value(0.6)).current;
+  useEffect(() => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 4,
+    }).start();
+  }, [scale]);
+  return (
+    <Animated.View style={{ alignItems: "center", transform: [{ scale }] }}>
+      <PixelGlyph name="star" size={72} />
+    </Animated.View>
   );
 }
 function Meter({
@@ -233,13 +259,19 @@ function Journal({
 }: {
   l: Language;
   p: AppData;
-  initial: { activity: Activity; skill: SkillId | null };
+  initial: {
+    activity: Activity;
+    skill: SkillId | null;
+    style?: ClimbStyle;
+    minutes?: number;
+  };
   onSave: (v: Session) => void;
   onDelete: (id: string) => void;
   readiness: Readiness;
 }) {
+  const [editing, setEditing] = useState<Session | null>(null);
   const [activity, setActivity] = useState(initial.activity),
-    [minutes, setMinutes] = useState("30"),
+    [minutes, setMinutes] = useState(String(initial.minutes || 30)),
     [attempts, setAttempts] = useState("0"),
     [sends, setSends] = useState("0"),
     [grade, setGrade] = useState(""),
@@ -249,7 +281,7 @@ function Journal({
     [pain, setPain] = useState(readiness === "pain"),
     [skill, setSkill] = useState(initial.skill),
     [effort, setEffort] = useState(3),
-    [style, setStyle] = useState<ClimbStyle>("Vertical");
+    [style, setStyle] = useState<ClimbStyle>(initial.style || "Vertical");
   const field = (
     key: CopyKey,
     value: string,
@@ -287,8 +319,8 @@ function Journal({
       error = "gradeError";
     if (error) return Alert.alert(t(l, "invalid"), t(l, error));
     onSave({
-      id: uid(),
-      date: new Date().toISOString(),
+      id: editing?.id || uid(),
+      date: editing?.date || new Date().toISOString(),
       activity,
       duration,
       attempts: activity === "bouldering" ? a : 0,
@@ -301,6 +333,7 @@ function Journal({
       pain,
     });
     setNotes("");
+    setEditing(null);
   };
   return (
     <>
@@ -308,7 +341,13 @@ function Journal({
         <Text style={[s.title, { flex: 1 }]}>{t(l, "log")}</Text>
         <Button label={t(l, "history")} onPress={() => setHistory(true)} />
       </View>
-      <Text style={s.muted}>{t(l, "recordActual")}</Text>
+      <Text style={s.muted}>
+        {editing
+          ? l === "en"
+            ? "Correcting saved session"
+            : "正在更正已有记录"
+          : t(l, "recordActual")}
+      </Text>
       <View style={s.wrap}>
         {(["bouldering", "strength", "mobility", "recovery"] as Activity[]).map(
           (a) => (
@@ -419,6 +458,23 @@ function Journal({
               </Text>
               {!!v.notes && <Text style={s.body}>{v.notes}</Text>}
               <Button
+                label={l === "en" ? "Edit" : "更正"}
+                onPress={() => {
+                  setEditing(v);
+                  setActivity(v.activity);
+                  setMinutes(String(v.duration));
+                  setAttempts(String(v.attempts));
+                  setSends(String(v.sends));
+                  setGrade(v.grade);
+                  setNotes(v.notes);
+                  setPain(v.pain);
+                  setSkill(v.skill);
+                  setEffort(v.effort);
+                  setStyle(v.style);
+                  setHistory(false);
+                }}
+              />
+              <Button
                 label={t(l, "delete")}
                 onPress={() =>
                   Alert.alert(t(l, "delete"), t(l, "deletePrompt"), [
@@ -495,13 +551,26 @@ function Hero({
               <Text style={[s.body, { width: 60 }]}>{attr(l, a)}</Text>
               <View style={{ flex: 1 }}>
                 <Meter
-                  value={ratingScore(latestRatings(p)[a])}
+                  value={growth(p, a).progress}
                   color={ATTRIBUTE_COLORS[a]}
                 />
               </View>
-              <Text style={s.body}>{ratingScore(latestRatings(p)[a])}</Text>
+              <Text style={s.body}>
+                +{growth(p, a).points} · {growth(p, a).progress}/100
+              </Text>
             </View>
           ))}
+          <Text style={s.gold}>
+            {l === "en"
+              ? "Game growth · 100 progress = 1 point"
+              : "游戏成长 · 每 100 进度升 1 点"}
+          </Text>
+          <Text style={s.muted}>
+            {ATTRIBUTES.map(
+              (a) => `${attr(l, a)} ${ratingScore(latestRatings(p)[a])}`,
+            ).join(" · ")}{" "}
+            · {l === "en" ? "Self-rating" : "自评"}
+          </Text>
           <Button label={t(l, "reassess")} onPress={openAssessment} />
           <Text style={s.muted}>{t(l, "disclaimer")}</Text>
         </View>
@@ -594,22 +663,50 @@ export default function App() {
     [initial, setInitial] = useState<{
       activity: Activity;
       skill: SkillId | null;
+      style?: ClimbStyle;
+      minutes?: number;
     }>({ activity: "bouldering", skill: null }),
     [formKey, setFormKey] = useState(0);
   const queue = useRef(Promise.resolve());
   const { height } = useWindowDimensions();
+  const [gallery, setGallery] = useState(false);
+  const profileRef = useRef(p);
+  profileRef.current = p;
+  const readinessRef = useRef(readiness);
+  readinessRef.current = readiness;
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const current = profileRef.current;
+      if (current) {
+        const next = ensureCommissions(current, readinessRef.current);
+        if (next !== current) persist(next);
+      }
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
   const load = () => {
     setLoadError(false);
     Promise.all([loadProfile(), loadLanguage()])
       .then(([profile, language]) => {
-        setP(profile);
+        const migrated = profile
+          ? reconcileWorld(settle(ensureCommissions(profile, profile.readiness || "normal")))
+          : null;
+        setP(migrated);
+        if (migrated)
+          queue.current = queue.current
+            .catch(() => {})
+            .then(() => saveProfile(migrated))
+            .catch(() => setSaveError(true));
         setL(language);
+        if (profile?.readiness) setReadiness(profile.readiness);
         setLoaded(true);
       })
       .catch(() => setLoadError(true));
   };
   useEffect(load, []);
-  const persist = (next: AppData) => {
+  const persist = (value: AppData) => {
+    const next = reconcileWorld(settle(ensureCommissions(value, readiness)));
+    profileRef.current = next;
     setP(next);
     queue.current = queue.current
       .catch(() => {})
@@ -617,17 +714,25 @@ export default function App() {
       .then(() => setSaveError(false))
       .catch(() => setSaveError(true));
   };
-  const openLog = (activity: Activity, skill: SkillId | null) => {
-    setInitial({ activity, skill });
+  const openLog = (
+    activity: Activity,
+    skill: SkillId | null,
+    style?: ClimbStyle,
+    minutes?: number,
+  ) => {
+    setInitial({ activity, skill, style, minutes });
     setFormKey((k) => k + 1);
     setQuest(null);
     setTab("journal");
   };
   const save = (v: Session) => {
     if (!p) return;
-    const next = logSession(p, v),
-      reward = sessionXP(next.sessions[0]);
-    let message = `+${reward} XP`;
+    const next = logSession(
+        { ...p, sessions: p.sessions.filter((s) => s.id !== v.id) },
+        v,
+      ),
+      reward = totalXP(next) - totalXP(p);
+    let message = `${reward >= 0 ? "+" : ""}${reward} XP`;
     if (v.skill) {
       const before = skillProgress(p, v.skill).days,
         after = skillProgress(next, v.skill).days;
@@ -637,8 +742,24 @@ export default function App() {
     if (heroLevel(totalXP(next)) > heroLevel(totalXP(p)))
       message += "\n" + t(l, "levelUp") + ` · Lv.${heroLevel(totalXP(next))}`;
     if (nodeCount(next) > nodeCount(p)) message += "\n" + t(l, "nodeUnlock");
+    for (const a of ATTRIBUTES) {
+      const before = growth(p, a),
+        after = growth(next, a);
+      const diff =
+        (after.points - before.points) * 100 + after.progress - before.progress;
+      if (diff) message += `\n${attr(l, a)} ${diff > 0 ? "+" : ""}${diff}/100`;
+    }
+    const completed = (next.questLedger || []).filter(
+      (r) => !p.questLedger?.some((old) => old.id === r.id),
+    );
+    if (completed.length)
+      message +=
+        "\n" +
+        (l === "en" ? "Commissions settled" : "委托已结算") +
+        ` ×${completed.length}`;
     if (v.pain) message += "\n" + t(l, "noXP");
-    persist(next);
+    persist(p.sessions.some(s => s.id === v.id) ? next : beginAdventure(next, v));
+    setTab("camp");
     setFeedback(message);
   };
   const q = p ? recommendedQuest(p, readiness) : null;
@@ -706,59 +827,7 @@ export default function App() {
                         value={xp - bounds.from}
                         max={bounds.to - bounds.from}
                       />
-                      <View style={s.scene}>
-                        <MountainVista
-                          height={Math.max(250, Math.min(440, height * 0.49))}
-                        />
-                        <Text style={s.sceneTitle}>{t(l, "campName")}</Text>
-                        {(
-                          [
-                            {
-                              key: "hero",
-                              label: "hero",
-                              left: "44%",
-                              top: "48%",
-                            },
-                            {
-                              key: "quests",
-                              label: "quests",
-                              left: "4%",
-                              top: "48%",
-                            },
-                            {
-                              key: "map",
-                              label: "map",
-                              left: "71%",
-                              top: "25%",
-                            },
-                            {
-                              key: "journal",
-                              label: "log",
-                              left: "68%",
-                              top: "77%",
-                            },
-                          ] as const
-                        ).map((v) => (
-                          <Pressable
-                            key={v.key}
-                            accessibilityRole="button"
-                            onPress={() =>
-                              v.key === "journal"
-                                ? openLog(
-                                    readiness === "pain" ||
-                                      readiness === "tired"
-                                      ? "recovery"
-                                      : "bouldering",
-                                    null,
-                                  )
-                                : setTab(v.key)
-                            }
-                            style={[s.hotspot, { left: v.left, top: v.top }]}
-                          >
-                            <Text style={s.hotspotText}>◆ {t(l, v.label)}</Text>
-                          </Pressable>
-                        ))}
-                      </View>
+                      <LivingCamp p={p} l={l} save={persist} navigate={setTab} record={() => openLog(readiness === "pain" || readiness === "tired" ? "recovery" : "bouldering", null)} />
                       <View style={s.wrap}>
                         {(
                           ["fresh", "normal", "tired", "pain"] as Readiness[]
@@ -767,7 +836,10 @@ export default function App() {
                             key={r}
                             label={t(l, r)}
                             active={readiness === r}
-                            onPress={() => setReadiness(r)}
+                            onPress={() => {
+                              setReadiness(r);
+                              persist({ ...p, readiness: r });
+                            }}
                           />
                         ))}
                       </View>
@@ -777,13 +849,15 @@ export default function App() {
                       <Pressable
                         accessibilityRole="button"
                         style={[s.panel, s.row]}
-                        onPress={() => setQuest(q)}
+                        onPress={() => setTab("quests")}
                       >
                         <PixelGlyph name={q?.skill || "heart"} size={36} />
                         <View style={{ flex: 1 }}>
                           <Text style={s.muted}>{t(l, "today")}</Text>
                           <Text style={s.body}>
-                            {questText(l, q!).title} · {q!.minutes} min
+                            {l === "en"
+                              ? "Daily & weekly commissions"
+                              : "每日 / 每周随机委托"}
                           </Text>
                         </View>
                         <Text style={s.gold}>→</Text>
@@ -791,64 +865,21 @@ export default function App() {
                     </>
                   )}
                   {tab === "quests" && (
-                    <>
-                      <Text style={s.title}>{t(l, "quests")}</Text>
-                      <MountainVista mode="trail" height={210} />
-                      {[
-                        q!,
-                        ...(readiness === "pain" || readiness === "tired"
-                          ? []
-                          : [
-                              recommendedQuest(p, "pain"),
-                              recommendedQuest(
-                                {
-                                  ...p,
-                                  assessments: [
-                                    {
-                                      ...p.assessments[0],
-                                      ratings: {
-                                        PWR: 5,
-                                        TEC: 1,
-                                        END: 5,
-                                        MOB: 5,
-                                        MND: 5,
-                                      },
-                                    },
-                                  ],
-                                },
-                                "normal",
-                              ),
-                            ]),
-                      ]
-                        .filter(
-                          (v, i, a) => a.findIndex((x) => x.id === v.id) === i,
-                        )
-                        .map((v, i) => (
-                          <Pressable
-                            key={v.id}
-                            accessibilityRole="button"
-                            style={[s.panel, s.row]}
-                            onPress={() => setQuest(v)}
-                          >
-                            <PixelGlyph name={v.skill || "heart"} size={42} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={s.muted}>
-                                {t(l, i === 0 ? "today" : "alternatives")}
-                              </Text>
-                              <Text style={s.title}>
-                                {questText(l, v).title}
-                              </Text>
-                              <Text style={s.gold}>
-                                {v.minutes} min · {t(l, v.activity)}
-                              </Text>
-                            </View>
-                            <Text style={s.gold}>→</Text>
-                          </Pressable>
-                        ))}
-                      <Text style={s.muted}>
-                        {t(l, "rest")} · {t(l, "recordActual")}
-                      </Text>
-                    </>
+                    <Board
+                      p={p}
+                      l={l}
+                      readiness={readiness}
+                      save={persist}
+                      train={(commission: Commission) => {
+                        const temp = templateOf(commission);
+                        openLog(
+                          temp.activity,
+                          temp.skill || null,
+                          temp.style,
+                          temp.route ? 30 : Math.min(60, commission.target),
+                        );
+                      }}
+                    />
                   )}
                   {tab === "hero" && (
                     <Hero
@@ -880,48 +911,101 @@ export default function App() {
                   )}
                   {tab === "map" && (
                     <>
-                      <Text style={s.title}>{t(l, "trail")}</Text>
-                      <PixelMap
-                        height={Math.min(390, height * 0.46)}
-                        unlocked={nodeCount(p)}
-                        onNode={setNode}
-                      />
-                      <Text style={s.muted}>{t(l, "routeInfo")}</Text>
-                      <View style={s.row}>
-                        <Text style={s.gold}>
-                          {t(l, "days")} · {trailDays(p)}
-                        </Text>
-                        <Text style={s.gold}>
-                          {t(l, "best")} · {bestGrade(p)}
-                        </Text>
+                      <View style={s.wrap}>
+                        <Button
+                          active={!gallery}
+                          label={t(l, "trail")}
+                          onPress={() => setGallery(false)}
+                        />
+                        <Button
+                          active={gallery}
+                          label={l === "en" ? "Route collection" : "线路图鉴"}
+                          onPress={() => setGallery(true)}
+                        />
                       </View>
-                      <Button
-                        label={
-                          t(l, "assessmentHistory") +
-                          ` · ${p.assessments.length}`
-                        }
-                        onPress={() => setHistory(true)}
-                      />
-                      {thresholds.map((n, i) => (
-                        <Pressable
-                          accessibilityRole="button"
-                          style={s.nodeRow}
-                          key={n}
-                          onPress={() => setNode(i)}
-                        >
-                          <PixelGlyph
-                            name={trailDays(p) >= n ? "star" : "lock"}
-                            size={24}
+                      {gallery ? (
+                        <Gallery
+                          p={p}
+                          l={l}
+                          save={(next) => {
+                            const delta = totalXP(next) - totalXP(p);
+                            persist(next);
+                            if (delta !== 0)
+                              setFeedback(
+                                `${delta > 0 ? "+" : ""}${delta} XP` +
+                                  ATTRIBUTES.map((a) => {
+                                    const before = growth(p, a),
+                                      after = growth(next, a);
+                                    const n =
+                                      (after.points - before.points) * 100 +
+                                      after.progress -
+                                      before.progress;
+                                    return n
+                                      ? `\n${attr(l, a)} ${n > 0 ? "+" : ""}${n}/100`
+                                      : "";
+                                  }).join(""),
+                              );
+                          }}
+                        />
+                      ) : (
+                        <>
+                          <Text style={s.title}>{t(l, "trail")}</Text>
+                          <PixelMap
+                            height={Math.min(390, height * 0.46)}
+                            unlocked={nodeCount(p)}
+                            onNode={setNode}
                           />
-                          <Text style={[s.body, { flex: 1 }]}>
-                            {t(l, `node${i}` as CopyKey)}
-                          </Text>
-                          <Text style={s.muted}>
-                            {trailDays(p) >= n ? "◆" : `${trailDays(p)}/${n}`}
-                          </Text>
-                        </Pressable>
-                      ))}
+                          <Text style={s.muted}>{t(l, "routeInfo")}</Text>
+                          <View style={s.row}>
+                            <Text style={s.gold}>
+                              {t(l, "days")} · {trailDays(p)}
+                            </Text>
+                            <Text style={s.gold}>
+                              {t(l, "best")} · {bestGrade(p)}
+                            </Text>
+                          </View>
+                          <Button
+                            label={
+                              t(l, "assessmentHistory") +
+                              ` · ${p.assessments.length}`
+                            }
+                            onPress={() => setHistory(true)}
+                          />
+                          {thresholds.map((n, i) => (
+                            <Pressable
+                              accessibilityRole="button"
+                              style={s.nodeRow}
+                              key={n}
+                              onPress={() => setNode(i)}
+                            >
+                              <PixelGlyph
+                                name={trailDays(p) >= n ? "star" : "lock"}
+                                size={24}
+                              />
+                              <Text style={[s.body, { flex: 1 }]}>
+                                {t(l, `node${i}` as CopyKey)}
+                              </Text>
+                              <Text style={s.muted}>
+                                {trailDays(p) >= n
+                                  ? "◆"
+                                  : `${trailDays(p)}/${n}`}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </>
+                      )}
                     </>
+                  )}
+                  {tab === "journal" && (
+                    <Button
+                      label={
+                        l === "en" ? "Add / view routes" : "添加 / 查看线路"
+                      }
+                      onPress={() => {
+                        setGallery(true);
+                        setTab("map");
+                      }}
+                    />
                   )}
                   {tab === "journal" && (
                     <Journal
@@ -1048,7 +1132,7 @@ export default function App() {
             )}
             {feedback && (
               <Sheet title={t(l, "reward")} close={() => setFeedback(null)}>
-                <PixelGlyph name="star" size={72} />
+                <RewardArt />
                 <Text style={s.level}>{feedback}</Text>
                 <Text style={s.muted}>{t(l, "disclaimer")}</Text>
                 <Button

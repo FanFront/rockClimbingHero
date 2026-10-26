@@ -37,9 +37,22 @@ development/release APK. See [Expo](https://docs.expo.dev/get-started/start-deve
 
 ## Build installable APK with GitHub Actions (no iOS)
 
-Open **Actions → Build Android APK → Run workflow** and, when the job succeeds,
-download the `rock-climbing-hero-android-apk` artifact. You can install its APK
-on an Android phone after allowing installation from that source.
+Open **Actions → Build Android APK → Run workflow** and choose
+`target_abi`:
+- **arm64-v8a (default):** smaller/faster build for modern physical ARM64 phones.
+- **all:** universal multi-architecture build for wider Android device/emulator compatibility.
+
+When the job succeeds, download the `rock-climbing-hero-android-apk` artifact.
+You can install its APK on an Android phone after allowing installation from that source.
+
+Builds now cache npm downloads and the Gradle user home, and use
+`--build-cache`; the first build warms these caches, so compare at least
+two subsequent runs before evaluating speed. Since the repository does not
+yet include a committed `package-lock.json`, this workflow intentionally
+keeps `npm install` rather than `npm ci` and keys the npm download cache
+by `package.json`. Future work can introduce a generated and verified lockfile
+to improve reproducibility. Gradle caching does not guarantee reuse of every
+CMake output.
 
 The release APK workflow compiles with the standard local Gradle signing
 configuration. **This is for personal testing, not production Play Store release.**
@@ -83,3 +96,9 @@ Do not uninstall without a backup once export is implemented.
 
 See [product specification](docs/PRODUCT.md) and
 [pixel-art direction](docs/ART_DIRECTION.md).
+
+### Android 原媒体与随机委托
+
+`npm run android` 会生成并运行包含 `modules/trail-media` 的 Android 构建（Expo Go 不含此原生模块）。线路图鉴通过系统 `ACTION_OPEN_DOCUMENT` 多选图片/视频，持久化读取授权，只存 `content://` 引用；点击打开由系统查看器播放，引用失效可解除并重选。
+
+日/周委托按本地日历生成并写入原有 schema 1 存档的可选字段；接取后的真实记录自动结算。成长为游戏数值，自评保持独立。奖励账本可从来源重新核算，删除或更正记录会撤回奖励。新训练每天最多 120 会话 XP，旧记录 XP 保留；委托奖励受固定周期任务数量限制。首次添加独立线路后，该会话的线路任务与最佳完攀以独立线路为准，请补齐真实线路。
