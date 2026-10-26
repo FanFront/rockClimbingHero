@@ -29,7 +29,15 @@
           "enableBackgroundPlayback": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "microphonePermission": false,
+          "cameraPermission": "Allow ASCENT to photograph a climbing route for your AI question."
+        }
+      ]
     ]
   }
 }

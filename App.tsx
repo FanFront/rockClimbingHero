@@ -1,3 +1,4 @@
+import { AICoach } from "./src/AICoach";
 import { CampHome, Completion, useExperience } from "./src/experience";
 import { LivingCamp } from "./src/LivingCamp";
 import { beginAdventure, reconcileWorld } from "./src/living";
@@ -277,6 +278,7 @@ function Journal({
   onDelete,
   readiness,
   focusId,
+  onAnalyze,
 }: {
   l: Language;
   p: AppData;
@@ -289,6 +291,7 @@ function Journal({
   onSave: (v: Session) => Promise<void>;
   focusId?: string;
   onDelete: (id: string) => void;
+  onAnalyze: (session?: Session) => void;
   readiness: Readiness;
 }) {
   const [saving, setSaving] = useState(false);
@@ -495,6 +498,14 @@ function Journal({
           onPress={submit}
         />
       </View>
+      <Button
+        label={
+          l === "en"
+            ? "AI attempt review · text, photo or video"
+            : "AI 尝试复盘 · 文字、图片或视频"
+        }
+        onPress={() => onAnalyze()}
+      />
       {history && (
         <Sheet title={t(l, "history")} close={() => setHistory(false)}>
           {!p.sessions.length && <Text style={s.muted}>{t(l, "empty")}</Text>}
@@ -518,6 +529,15 @@ function Journal({
                   {v.pain ? " · " + t(l, "pain") : ""}
                 </Text>
                 {!!v.notes && <Text style={s.body}>{v.notes}</Text>}
+                <Button
+                  label={
+                    l === "en" ? "Analyze this attempt" : "AI 复盘本次尝试"
+                  }
+                  onPress={() => {
+                    setHistory(false);
+                    onAnalyze(v);
+                  }}
+                />
                 <Button
                   label={l === "en" ? "Edit" : "更正"}
                   onPress={() => {
@@ -739,6 +759,9 @@ export default function App() {
   );
   const [savingSession, setSavingSession] = useState(false);
   const savingSessionRef = useRef(false);
+  const [aiOpen, setAIOpen] = useState(false);
+  const [aiSession, setAISession] = useState<Session>();
+  const aiBusy = useRef(false);
   const queue = useRef(Promise.resolve());
   const { height } = useWindowDimensions();
   const [gallery, setGallery] = useState(false);
@@ -938,6 +961,17 @@ export default function App() {
                   >
                     {tab === "camp" && (
                       <>
+                        <Button
+                          label={
+                            l === "en"
+                              ? "AI route advice & attempt review"
+                              : "AI 线路求助与尝试复盘"
+                          }
+                          onPress={() => {
+                            setAISession(undefined);
+                            setAIOpen(true);
+                          }}
+                        />
                         <CampHome
                           name={p.name}
                           l={l}
@@ -1144,6 +1178,10 @@ export default function App() {
                         p={p}
                         initial={initial}
                         readiness={readiness}
+                        onAnalyze={(v) => {
+                          setAISession(v);
+                          setAIOpen(true);
+                        }}
                         onSave={save}
                         onDelete={(id) => persist(deleteSession(p, id))}
                       />
@@ -1182,6 +1220,22 @@ export default function App() {
                     ))}
                   </View>
                 </>
+              )}
+              {aiOpen && (
+                <Sheet
+                  title={l === "en" ? "AI climbing assistant" : "AI 攀岩助手"}
+                  close={() => {
+                    if (!aiBusy.current) setAIOpen(false);
+                  }}
+                >
+                  <AICoach
+                    l={l}
+                    session={aiSession}
+                    onBusy={(v) => {
+                      aiBusy.current = v;
+                    }}
+                  />
+                </Sheet>
               )}
               {settings && (
                 <Sheet
