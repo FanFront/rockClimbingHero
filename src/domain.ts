@@ -23,6 +23,7 @@ export type Session = {
 export type Demonstration = {id:string; date:string; skill:SkillId; note:string; kind:'self-attested'};
 export type AppData = {
   schema: 1;
+  world?: import("./living").World;
   name: string;
   createdAt: string;
   commissions?: Commission[];

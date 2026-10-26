@@ -1,3 +1,5 @@
+import { LivingCamp } from "./src/LivingCamp";
+import { beginAdventure, reconcileWorld } from "./src/living";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -687,7 +689,7 @@ export default function App() {
     Promise.all([loadProfile(), loadLanguage()])
       .then(([profile, language]) => {
         const migrated = profile
-          ? settle(ensureCommissions(profile, profile.readiness || "normal"))
+          ? reconcileWorld(settle(ensureCommissions(profile, profile.readiness || "normal")))
           : null;
         setP(migrated);
         if (migrated)
@@ -703,7 +705,8 @@ export default function App() {
   };
   useEffect(load, []);
   const persist = (value: AppData) => {
-    const next = settle(ensureCommissions(value, readiness));
+    const next = reconcileWorld(settle(ensureCommissions(value, readiness)));
+    profileRef.current = next;
     setP(next);
     queue.current = queue.current
       .catch(() => {})
@@ -755,7 +758,8 @@ export default function App() {
         (l === "en" ? "Commissions settled" : "委托已结算") +
         ` ×${completed.length}`;
     if (v.pain) message += "\n" + t(l, "noXP");
-    persist(next);
+    persist(p.sessions.some(s => s.id === v.id) ? next : beginAdventure(next, v));
+    setTab("camp");
     setFeedback(message);
   };
   const q = p ? recommendedQuest(p, readiness) : null;
@@ -823,59 +827,7 @@ export default function App() {
                         value={xp - bounds.from}
                         max={bounds.to - bounds.from}
                       />
-                      <View style={s.scene}>
-                        <MountainVista
-                          height={Math.max(250, Math.min(440, height * 0.49))}
-                        />
-                        <Text style={s.sceneTitle}>{t(l, "campName")}</Text>
-                        {(
-                          [
-                            {
-                              key: "hero",
-                              label: "hero",
-                              left: "44%",
-                              top: "48%",
-                            },
-                            {
-                              key: "quests",
-                              label: "quests",
-                              left: "4%",
-                              top: "48%",
-                            },
-                            {
-                              key: "map",
-                              label: "map",
-                              left: "71%",
-                              top: "25%",
-                            },
-                            {
-                              key: "journal",
-                              label: "log",
-                              left: "68%",
-                              top: "77%",
-                            },
-                          ] as const
-                        ).map((v) => (
-                          <Pressable
-                            key={v.key}
-                            accessibilityRole="button"
-                            onPress={() =>
-                              v.key === "journal"
-                                ? openLog(
-                                    readiness === "pain" ||
-                                      readiness === "tired"
-                                      ? "recovery"
-                                      : "bouldering",
-                                    null,
-                                  )
-                                : setTab(v.key)
-                            }
-                            style={[s.hotspot, { left: v.left, top: v.top }]}
-                          >
-                            <Text style={s.hotspotText}>◆ {t(l, v.label)}</Text>
-                          </Pressable>
-                        ))}
-                      </View>
+                      <LivingCamp p={p} l={l} save={persist} navigate={setTab} record={() => openLog(readiness === "pain" || readiness === "tired" ? "recovery" : "bouldering", null)} />
                       <View style={s.wrap}>
                         {(
                           ["fresh", "normal", "tired", "pain"] as Readiness[]
