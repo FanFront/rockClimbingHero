@@ -21,7 +21,14 @@
       "appTheme": "ASCENT Expedition RPG"
     },
     "plugins": [
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "recordAudioAndroid": false,
+          "microphonePermission": false,
+          "enableBackgroundPlayback": false
+        }
+      ]
     ]
   }
 }

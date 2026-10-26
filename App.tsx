@@ -4,6 +4,7 @@ import { beginAdventure, reconcileWorld } from "./src/living";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
   Animated,
@@ -155,7 +156,10 @@ function Sheet({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={close}>
       <SafeAreaView style={s.scrim}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s.sheet}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={s.sheet}
+        >
           <View style={s.row}>
             <Text style={[s.title, { flex: 1 }]}>{title}</Text>
             <Pressable
@@ -244,7 +248,19 @@ function Assessment({
               )
         }
       />
-      {!p && <Button label={l === "en" ? "Enter camp · assess later" : "先进入营地 · 稍后自评"} onPress={()=>save(name.trim() || (l === "en" ? "Explorer" : "探险者"),DEFAULT_RATINGS)} />}
+      {!p && (
+        <Button
+          label={
+            l === "en" ? "Enter camp · assess later" : "先进入营地 · 稍后自评"
+          }
+          onPress={() =>
+            save(
+              name.trim() || (l === "en" ? "Explorer" : "探险者"),
+              DEFAULT_RATINGS,
+            )
+          }
+        />
+      )}
       {index > 0 && (
         <Button label={t(l, "back")} onPress={() => setIndex(index - 1)} />
       )}{" "}
@@ -329,25 +345,33 @@ function Journal({
     )
       error = "gradeError";
     if (error) return Alert.alert(t(l, "invalid"), t(l, error));
-    savingRef.current = true; setSaving(true); setSaveFailure(false);
-    try { await onSave({
-      id: editing?.id || draftId.current,
-      date: editing?.date || new Date().toISOString(),
-      activity,
-      duration,
-      attempts: activity === "bouldering" ? a : 0,
-      sends: activity === "bouldering" ? b : 0,
-      grade: activity === "bouldering" ? grade.toUpperCase().trim() : "",
-      style,
-      skill: activity === "recovery" ? null : skill,
-      effort,
-      notes: notes.trim(),
-      pain,
-    });
-    setNotes("");
-    setEditing(null);
-    draftId.current = uid();
-    } catch { setSaveFailure(true); } finally { savingRef.current=false; setSaving(false); }
+    savingRef.current = true;
+    setSaving(true);
+    setSaveFailure(false);
+    try {
+      await onSave({
+        id: editing?.id || draftId.current,
+        date: editing?.date || new Date().toISOString(),
+        activity,
+        duration,
+        attempts: activity === "bouldering" ? a : 0,
+        sends: activity === "bouldering" ? b : 0,
+        grade: activity === "bouldering" ? grade.toUpperCase().trim() : "",
+        style,
+        skill: activity === "recovery" ? null : skill,
+        effort,
+        notes: notes.trim(),
+        pain,
+      });
+      setNotes("");
+      setEditing(null);
+      draftId.current = uid();
+    } catch {
+      setSaveFailure(true);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
   return (
     <>
@@ -454,56 +478,78 @@ function Journal({
             )}
           </>
         )}
-        {saveFailure && <Text accessibilityRole="alert" style={s.warning}>{t(l,"saveError")} · {l === "en" ? "Your input is kept. Try again." : "输入已保留，请重试。"}</Text>}
-        <Button active disabled={saving} label={saving ? (l === "en" ? "Saving…" : "正在保存…") : t(l, "submit")} onPress={submit} />
+        {saveFailure && (
+          <Text accessibilityRole="alert" style={s.warning}>
+            {t(l, "saveError")} ·{" "}
+            {l === "en"
+              ? "Your input is kept. Try again."
+              : "输入已保留，请重试。"}
+          </Text>
+        )}
+        <Button
+          active
+          disabled={saving}
+          label={
+            saving ? (l === "en" ? "Saving…" : "正在保存…") : t(l, "submit")
+          }
+          onPress={submit}
+        />
       </View>
       {history && (
         <Sheet title={t(l, "history")} close={() => setHistory(false)}>
           {!p.sessions.length && <Text style={s.muted}>{t(l, "empty")}</Text>}
-          {[...p.sessions].sort((a,b)=>a.id===focusId?-1:b.id===focusId?1:b.date.localeCompare(a.date)).map((v) => (
-            <View style={s.panel} key={v.id}>
-              <Text style={s.body}>
-                {t(l, v.activity)} · {v.duration} min · +{sessionXP(v)} XP
-              </Text>
-              <Text style={s.muted}>
-                {new Date(v.date).toLocaleDateString(l)} · {v.grade} · {v.sends}
-                /{v.attempts}
-                {v.skill ? " · " + skillText(l, v.skill) : ""}
-                {v.pain ? " · " + t(l, "pain") : ""}
-              </Text>
-              {!!v.notes && <Text style={s.body}>{v.notes}</Text>}
-              <Button
-                label={l === "en" ? "Edit" : "更正"}
-                onPress={() => {
-                  setEditing(v);
-                  setActivity(v.activity);
-                  setMinutes(String(v.duration));
-                  setAttempts(String(v.attempts));
-                  setSends(String(v.sends));
-                  setGrade(v.grade);
-                  setNotes(v.notes);
-                  setPain(v.pain);
-                  setSkill(v.skill);
-                  setEffort(v.effort);
-                  setStyle(v.style);
-                  setHistory(false);
-                }}
-              />
-              <Button
-                label={t(l, "delete")}
-                onPress={() =>
-                  Alert.alert(t(l, "delete"), t(l, "deletePrompt"), [
-                    { text: t(l, "cancel"), style: "cancel" },
-                    {
-                      text: t(l, "delete"),
-                      style: "destructive",
-                      onPress: () => onDelete(v.id),
-                    },
-                  ])
-                }
-              />
-            </View>
-          ))}
+          {[...p.sessions]
+            .sort((a, b) =>
+              a.id === focusId
+                ? -1
+                : b.id === focusId
+                  ? 1
+                  : b.date.localeCompare(a.date),
+            )
+            .map((v) => (
+              <View style={s.panel} key={v.id}>
+                <Text style={s.body}>
+                  {t(l, v.activity)} · {v.duration} min · +{sessionXP(v)} XP
+                </Text>
+                <Text style={s.muted}>
+                  {new Date(v.date).toLocaleDateString(l)} · {v.grade} ·{" "}
+                  {v.sends}/{v.attempts}
+                  {v.skill ? " · " + skillText(l, v.skill) : ""}
+                  {v.pain ? " · " + t(l, "pain") : ""}
+                </Text>
+                {!!v.notes && <Text style={s.body}>{v.notes}</Text>}
+                <Button
+                  label={l === "en" ? "Edit" : "更正"}
+                  onPress={() => {
+                    setEditing(v);
+                    setActivity(v.activity);
+                    setMinutes(String(v.duration));
+                    setAttempts(String(v.attempts));
+                    setSends(String(v.sends));
+                    setGrade(v.grade);
+                    setNotes(v.notes);
+                    setPain(v.pain);
+                    setSkill(v.skill);
+                    setEffort(v.effort);
+                    setStyle(v.style);
+                    setHistory(false);
+                  }}
+                />
+                <Button
+                  label={t(l, "delete")}
+                  onPress={() =>
+                    Alert.alert(t(l, "delete"), t(l, "deletePrompt"), [
+                      { text: t(l, "cancel"), style: "cancel" },
+                      {
+                        text: t(l, "delete"),
+                        style: "destructive",
+                        onPress: () => onDelete(v.id),
+                      },
+                    ])
+                  }
+                />
+              </View>
+            ))}
         </Sheet>
       )}
     </>
@@ -682,10 +728,15 @@ export default function App() {
       minutes?: number;
     }>({ activity: "bouldering", skill: null }),
     [formKey, setFormKey] = useState(0);
-  const [focusId,setFocusId] = useState<string | undefined>();
-  const [completion,setCompletion] = useState<{session:Session;reward:string}|null>(null);
-  const [legacyCamp,setLegacyCamp]=useState(false);
-  const experience=useExperience(tab === "camp" && !completion && loaded && !!p);
+  const [focusId, setFocusId] = useState<string | undefined>();
+  const [completion, setCompletion] = useState<{
+    session: Session;
+    reward: string;
+  } | null>(null);
+  const [legacyCamp, setLegacyCamp] = useState(false);
+  const experience = useExperience(
+    tab === "camp" && !completion && loaded && !!p,
+  );
   const queue = useRef(Promise.resolve());
   const { height } = useWindowDimensions();
   const [gallery, setGallery] = useState(false);
@@ -708,7 +759,9 @@ export default function App() {
     Promise.all([loadProfile(), loadLanguage()])
       .then(([profile, language]) => {
         const migrated = profile
-          ? reconcileWorld(settle(ensureCommissions(profile, profile.readiness || "normal")))
+          ? reconcileWorld(
+              settle(ensureCommissions(profile, profile.readiness || "normal")),
+            )
           : null;
         setP(migrated);
         if (migrated)
@@ -733,6 +786,16 @@ export default function App() {
       .then(() => setSaveError(false))
       .catch(() => setSaveError(true));
   };
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (tab !== "camp") {
+        setTab("camp");
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [tab]);
   const openLog = (
     activity: Activity,
     skill: SkillId | null,
@@ -779,13 +842,26 @@ export default function App() {
         (l === "en" ? "Commissions settled" : "委托已结算") +
         ` ×${completed.length}`;
     if (v.pain) message += "\n" + t(l, "noXP");
-    const saved = reconcileWorld(settle(ensureCommissions(p.sessions.some(s => s.id === v.id) ? next : beginAdventure(next,v),readiness)));
-    const pending = queue.current.catch(()=>{}).then(()=>saveProfile(saved));
-    queue.current = pending.catch(()=>{});
+    const saved = reconcileWorld(
+      settle(
+        ensureCommissions(
+          p.sessions.some((s) => s.id === v.id)
+            ? next
+            : beginAdventure(next, v),
+          readiness,
+        ),
+      ),
+    );
+    const pending = queue.current
+      .catch(() => {})
+      .then(() => saveProfile(saved));
+    queue.current = pending.catch(() => {});
     await pending;
-    profileRef.current=saved; setP(saved); setSaveError(false);
+    profileRef.current = saved;
+    setP(saved);
+    setSaveError(false);
     experience.cue("saved");
-    setCompletion({session:v,reward:message});
+    setCompletion({ session: v, reward: message });
     setTab("camp");
   };
   const q = p ? recommendedQuest(p, readiness) : null;
@@ -795,365 +871,480 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <SafeAreaView style={s.screen}>
-      <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
-        {!loaded ? (
-          <View style={s.center}>
-            <PixelGlyph name="fire" size={70} />
-            <Text style={s.body}>
-              {t(l, loadError ? "storageError" : "loading")}
-            </Text>
-            {loadError && <Button label={t(l, "retry")} onPress={load} />}
-          </View>
-        ) : (
-          <>
-            <View style={s.top}>
-              <Text style={s.brand}>▲ ASCENT</Text>
-              <Button
-                label={l === "zh-CN" ? "EN / 设置" : "中文 / Settings"}
-                onPress={() => setSettings(true)}
-              />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+          {!loaded ? (
+            <View style={s.center}>
+              <PixelGlyph name="fire" size={70} />
+              <Text style={s.body}>
+                {t(l, loadError ? "storageError" : "loading")}
+              </Text>
+              {loadError && <Button label={t(l, "retry")} onPress={load} />}
             </View>
-            {saveError && (
-              <View style={s.panel}>
-                <Text style={s.warning}>{t(l, "saveError")}</Text>
-                <Button label={t(l, "retry")} onPress={() => p && persist(p)} />
+          ) : (
+            <>
+              <View style={s.top}>
+                <Text style={s.brand}>▲ ASCENT</Text>
+                <Button
+                  label={l === "zh-CN" ? "EN / 设置" : "中文 / Settings"}
+                  onPress={() => setSettings(true)}
+                />
               </View>
-            )}
-            {!p || assessment ? (
-              <Assessment
-                l={l}
-                p={p}
-                cancel={() => setAssessment(false)}
-                save={(name, r) => {
-                  persist(
-                    p
-                      ? reassess(p, r, new Date().toISOString())
-                      : createProfile(name, r),
-                  );
-                  setAssessment(false);
-                  setTab(p ? "hero" : "camp");
-                }}
-              />
-            ) : (
-              <>
-                <ScrollView
-                  key={tab}
-                  keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={s.stack}
-                >
-                  {tab === "camp" && (
-                    <>
-                      <CampHome name={p.name} l={l} count={p.sessions.length} latest={[...p.sessions].sort((a,b)=>b.date.localeCompare(a.date))[0]} reduced={experience.reduce} record={() => openLog(readiness === "pain" || readiness === "tired" ? "recovery" : "bouldering",null)} recall={()=>{const recent=[...p.sessions].sort((a,b)=>b.date.localeCompare(a.date))[0];setFocusId(recent?.id);setFormKey(k=>k+1);setTab("journal");}} />
-                      <Button label={l === "en" ? "Camp companions & collection" : "营地伙伴与旧日收藏"} onPress={()=>setLegacyCamp(true)} />
-                      <View style={s.wrap}>
-                        {(
-                          ["fresh", "normal", "tired", "pain"] as Readiness[]
-                        ).map((r) => (
-                          <Button
-                            key={r}
-                            label={t(l, r)}
-                            active={readiness === r}
-                            onPress={() => {
-                              setReadiness(r);
-                              persist({ ...p, readiness: r });
-                            }}
-                          />
-                        ))}
-                      </View>
-                      {readiness === "pain" && (
-                        <Text style={s.warning}>{t(l, "safety")}</Text>
-                      )}
-
-                    </>
-                  )}
-                  {tab === "quests" && (
-                    <Board
-                      p={p}
-                      l={l}
-                      readiness={readiness}
-                      save={persist}
-                      train={(commission: Commission) => {
-                        const temp = templateOf(commission);
-                        openLog(
-                          temp.activity,
-                          temp.skill || null,
-                          temp.style,
-                          temp.route ? 30 : Math.min(60, commission.target),
-                        );
-                      }}
-                    />
-                  )}
-                  {tab === "hero" && (
-                    <Hero
-                      l={l}
-                      p={p}
-                      reassess={() => setAssessment(true)}
-                      attest={(id, note) => {
-                        if (
-                          skillProgress(p, id).days < 3 ||
-                          p.demonstrations.some((d) => d.skill === id)
-                        )
-                          return;
-                        persist({
-                          ...p,
-                          demonstrations: [
-                            {
-                              id: uid(),
-                              date: new Date().toISOString(),
-                              skill: id,
-                              note,
-                              kind: "self-attested",
-                            },
-                            ...p.demonstrations,
-                          ],
-                        });
-                        setFeedback(t(l, "proofSaved"));
-                      }}
-                    />
-                  )}
-                  {tab === "map" && (
-                    <>
-                      <View style={s.wrap}>
-                        <Button
-                          active={!gallery}
-                          label={t(l, "trail")}
-                          onPress={() => setGallery(false)}
-                        />
-                        <Button
-                          active={gallery}
-                          label={l === "en" ? "Route collection" : "线路图鉴"}
-                          onPress={() => setGallery(true)}
-                        />
-                      </View>
-                      {gallery ? (
-                        <Gallery
-                          p={p}
+              {saveError && (
+                <View style={s.panel}>
+                  <Text style={s.warning}>{t(l, "saveError")}</Text>
+                  <Button
+                    label={t(l, "retry")}
+                    onPress={() => p && persist(p)}
+                  />
+                </View>
+              )}
+              {!p || assessment ? (
+                <Assessment
+                  l={l}
+                  p={p}
+                  cancel={() => setAssessment(false)}
+                  save={(name, r) => {
+                    persist(
+                      p
+                        ? reassess(p, r, new Date().toISOString())
+                        : createProfile(name, r),
+                    );
+                    setAssessment(false);
+                    setTab(p ? "hero" : "camp");
+                  }}
+                />
+              ) : (
+                <>
+                  <ScrollView
+                    key={tab}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={s.stack}
+                  >
+                    {tab === "camp" && (
+                      <>
+                        <CampHome
+                          name={p.name}
                           l={l}
-                          save={(next) => {
-                            const delta = totalXP(next) - totalXP(p);
-                            persist(next);
-                            if (delta !== 0)
-                              setFeedback(
-                                `${delta > 0 ? "+" : ""}${delta} XP` +
-                                  ATTRIBUTES.map((a) => {
-                                    const before = growth(p, a),
-                                      after = growth(next, a);
-                                    const n =
-                                      (after.points - before.points) * 100 +
-                                      after.progress -
-                                      before.progress;
-                                    return n
-                                      ? `\n${attr(l, a)} ${n > 0 ? "+" : ""}${n}/100`
-                                      : "";
-                                  }).join(""),
-                              );
+                          count={p.sessions.length}
+                          latest={
+                            [...p.sessions].sort((a, b) =>
+                              b.date.localeCompare(a.date),
+                            )[0]
+                          }
+                          reduced={experience.reduce}
+                          record={() =>
+                            openLog(
+                              readiness === "pain" || readiness === "tired"
+                                ? "recovery"
+                                : "bouldering",
+                              null,
+                            )
+                          }
+                          recall={() => {
+                            const recent = [...p.sessions].sort((a, b) =>
+                              b.date.localeCompare(a.date),
+                            )[0];
+                            setFocusId(recent?.id);
+                            setFormKey((k) => k + 1);
+                            setTab("journal");
                           }}
                         />
-                      ) : (
-                        <>
-                          <Text style={s.title}>{t(l, "trail")}</Text>
-                          <PixelMap
-                            height={Math.min(390, height * 0.46)}
-                            unlocked={nodeCount(p)}
-                            onNode={setNode}
-                          />
-                          <Text style={s.muted}>{t(l, "routeInfo")}</Text>
-                          <View style={s.row}>
-                            <Text style={s.gold}>
-                              {t(l, "days")} · {trailDays(p)}
-                            </Text>
-                            <Text style={s.gold}>
-                              {t(l, "best")} · {bestGrade(p)}
-                            </Text>
-                          </View>
-                          <Button
-                            label={
-                              t(l, "assessmentHistory") +
-                              ` · ${p.assessments.length}`
-                            }
-                            onPress={() => setHistory(true)}
-                          />
-                          {thresholds.map((n, i) => (
-                            <Pressable
-                              accessibilityRole="button"
-                              style={s.nodeRow}
-                              key={n}
-                              onPress={() => setNode(i)}
-                            >
-                              <PixelGlyph
-                                name={trailDays(p) >= n ? "star" : "lock"}
-                                size={24}
-                              />
-                              <Text style={[s.body, { flex: 1 }]}>
-                                {t(l, `node${i}` as CopyKey)}
-                              </Text>
-                              <Text style={s.muted}>
-                                {trailDays(p) >= n
-                                  ? "◆"
-                                  : `${trailDays(p)}/${n}`}
-                              </Text>
-                            </Pressable>
+                        <Button
+                          label={
+                            l === "en"
+                              ? "Camp companions & collection"
+                              : "营地伙伴与旧日收藏"
+                          }
+                          onPress={() => setLegacyCamp(true)}
+                        />
+                        <View style={s.wrap}>
+                          {(
+                            ["fresh", "normal", "tired", "pain"] as Readiness[]
+                          ).map((r) => (
+                            <Button
+                              key={r}
+                              label={t(l, r)}
+                              active={readiness === r}
+                              onPress={() => {
+                                setReadiness(r);
+                                persist({ ...p, readiness: r });
+                              }}
+                            />
                           ))}
-                        </>
-                      )}
-                    </>
-                  )}
-                  {tab === "journal" && (
-                    <Button
-                      label={
-                        l === "en" ? "Add / view routes" : "添加 / 查看线路"
-                      }
-                      onPress={() => {
-                        setGallery(true);
-                        setTab("map");
-                      }}
-                    />
-                  )}
-                  {tab === "journal" && (
-                    <Journal
-                      key={formKey}
-                      focusId={focusId}
-                      l={l}
-                      p={p}
-                      initial={initial}
-                      readiness={readiness}
-                      onSave={save}
-                      onDelete={(id) => persist(deleteSession(p, id))}
-                    />
-                  )}
-                </ScrollView>
-                <View style={s.nav}>
-                  {tabs.map((v, i) => (
-                    <Pressable
-                      key={v}
-                      accessibilityRole="tab"
-                      accessibilityState={{ selected: tab === v }}
-                      onPress={() => setTab(v)}
-                      style={[
-                        s.navItem,
-                        tab === v && {
-                          backgroundColor: C.panel2,
-                          borderTopColor: C.gold,
-                          borderTopWidth: 2,
-                        },
-                      ]}
-                    >
-                      <PixelGlyph
-                        name={icons[i]}
-                        size={24}
-                        color={tab === v ? C.gold : C.muted}
-                      />
-                      <Text
-                        style={{
-                          color: tab === v ? C.gold : C.muted,
-                          fontSize: 12,
+                        </View>
+                        {readiness === "pain" && (
+                          <Text style={s.warning}>{t(l, "safety")}</Text>
+                        )}
+                      </>
+                    )}
+                    {tab === "quests" && (
+                      <Board
+                        p={p}
+                        l={l}
+                        readiness={readiness}
+                        save={persist}
+                        train={(commission: Commission) => {
+                          const temp = templateOf(commission);
+                          openLog(
+                            temp.activity,
+                            temp.skill || null,
+                            temp.style,
+                            temp.route ? 30 : Math.min(60, commission.target),
+                          );
                         }}
+                      />
+                    )}
+                    {tab === "hero" && (
+                      <Hero
+                        l={l}
+                        p={p}
+                        reassess={() => setAssessment(true)}
+                        attest={(id, note) => {
+                          if (
+                            skillProgress(p, id).days < 3 ||
+                            p.demonstrations.some((d) => d.skill === id)
+                          )
+                            return;
+                          persist({
+                            ...p,
+                            demonstrations: [
+                              {
+                                id: uid(),
+                                date: new Date().toISOString(),
+                                skill: id,
+                                note,
+                                kind: "self-attested",
+                              },
+                              ...p.demonstrations,
+                            ],
+                          });
+                          setFeedback(t(l, "proofSaved"));
+                        }}
+                      />
+                    )}
+                    {tab === "map" && (
+                      <>
+                        <View style={s.wrap}>
+                          <Button
+                            active={!gallery}
+                            label={t(l, "trail")}
+                            onPress={() => setGallery(false)}
+                          />
+                          <Button
+                            active={gallery}
+                            label={l === "en" ? "Route collection" : "线路图鉴"}
+                            onPress={() => setGallery(true)}
+                          />
+                        </View>
+                        {gallery ? (
+                          <Gallery
+                            p={p}
+                            l={l}
+                            save={(next) => {
+                              const delta = totalXP(next) - totalXP(p);
+                              persist(next);
+                              if (delta !== 0)
+                                setFeedback(
+                                  `${delta > 0 ? "+" : ""}${delta} XP` +
+                                    ATTRIBUTES.map((a) => {
+                                      const before = growth(p, a),
+                                        after = growth(next, a);
+                                      const n =
+                                        (after.points - before.points) * 100 +
+                                        after.progress -
+                                        before.progress;
+                                      return n
+                                        ? `\n${attr(l, a)} ${n > 0 ? "+" : ""}${n}/100`
+                                        : "";
+                                    }).join(""),
+                                );
+                            }}
+                          />
+                        ) : (
+                          <>
+                            <Text style={s.title}>{t(l, "trail")}</Text>
+                            <PixelMap
+                              height={Math.min(390, height * 0.46)}
+                              unlocked={nodeCount(p)}
+                              onNode={setNode}
+                            />
+                            <Text style={s.muted}>{t(l, "routeInfo")}</Text>
+                            <View style={s.row}>
+                              <Text style={s.gold}>
+                                {t(l, "days")} · {trailDays(p)}
+                              </Text>
+                              <Text style={s.gold}>
+                                {t(l, "best")} · {bestGrade(p)}
+                              </Text>
+                            </View>
+                            <Button
+                              label={
+                                t(l, "assessmentHistory") +
+                                ` · ${p.assessments.length}`
+                              }
+                              onPress={() => setHistory(true)}
+                            />
+                            {thresholds.map((n, i) => (
+                              <Pressable
+                                accessibilityRole="button"
+                                style={s.nodeRow}
+                                key={n}
+                                onPress={() => setNode(i)}
+                              >
+                                <PixelGlyph
+                                  name={trailDays(p) >= n ? "star" : "lock"}
+                                  size={24}
+                                />
+                                <Text style={[s.body, { flex: 1 }]}>
+                                  {t(l, `node${i}` as CopyKey)}
+                                </Text>
+                                <Text style={s.muted}>
+                                  {trailDays(p) >= n
+                                    ? "◆"
+                                    : `${trailDays(p)}/${n}`}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </>
+                        )}
+                      </>
+                    )}
+                    {tab === "journal" && (
+                      <Button
+                        label={
+                          l === "en" ? "Add / view routes" : "添加 / 查看线路"
+                        }
+                        onPress={() => {
+                          setGallery(true);
+                          setTab("map");
+                        }}
+                      />
+                    )}
+                    {tab === "journal" && (
+                      <Journal
+                        key={formKey}
+                        focusId={focusId}
+                        l={l}
+                        p={p}
+                        initial={initial}
+                        readiness={readiness}
+                        onSave={save}
+                        onDelete={(id) => persist(deleteSession(p, id))}
+                      />
+                    )}
+                  </ScrollView>
+                  <View style={s.nav}>
+                    {tabs.map((v, i) => (
+                      <Pressable
+                        key={v}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: tab === v }}
+                        onPress={() => setTab(v)}
+                        style={[
+                          s.navItem,
+                          tab === v && {
+                            backgroundColor: C.panel2,
+                            borderTopColor: C.gold,
+                            borderTopWidth: 2,
+                          },
+                        ]}
                       >
-                        {t(l, v)}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </>
-            )}
-            {settings && (
-              <Sheet title={t(l, "settings")} close={() => setSettings(false)}>
-                <Button label={experience.muted ? (l === "en" ? "Sound: muted · tap to enable" : "声音：静音 · 点击开启") : (l === "en" ? "Sound: on" : "声音：开启")} onPress={()=>experience.setMuted(!experience.muted)} />
-                <Button label={(l === "en" ? "Reduce motion: " : "减少动效：")+(experience.reduce ? (l === "en" ? "on" : "开启") : (l === "en" ? "off" : "关闭"))} onPress={()=>experience.setReduce(!experience.manualReduce)} />
-                {experience.error && <Text style={s.warning}>{l === "en" ? "Audio or preference storage unavailable." : "声音或偏好设置存储暂不可用。"}</Text>}
-                <Text style={s.body}>{t(l, "language")}</Text>
-                {(["zh-CN", "en"] as Language[]).map((v) => (
-                  <Button
-                    key={v}
-                    label={v === "en" ? "English" : "简体中文"}
-                    active={l === v}
-                    onPress={() => {
-                      setL(v);
-                      queue.current = queue.current
-                        .catch(() => {})
-                        .then(() => saveLanguage(v))
-                        .catch(() => Alert.alert(t(v, "saveError")));
-                    }}
-                  />
-                ))}
-                <Text style={s.muted}>{t(l, "disclaimer")}</Text>
-              </Sheet>
-            )}
-            {quest && (
-              <Sheet
-                title={questText(l, quest).title}
-                close={() => setQuest(null)}
-              >
-                <Text style={s.gold}>
-                  {quest.minutes} min · {t(l, quest.activity)}
-                </Text>
-                {questText(l, quest).steps.map((v, i) => (
-                  <Text key={i} style={s.body}>
-                    {i + 1}. {v}
-                  </Text>
-                ))}
-                <Text style={s.muted}>{t(l, "recordActual")}</Text>
-                {(readiness === "pain" || readiness === "tired") && (
-                  <Text style={s.warning}>{t(l, "safety")}</Text>
-                )}
-                <Button
-                  active
-                  label={t(l, "startLog")}
-                  onPress={() => openLog(quest.activity, quest.skill)}
-                />
-              </Sheet>
-            )}
-            {node !== null && p && (
-              <Sheet
-                title={t(l, `node${node}` as CopyKey)}
-                close={() => setNode(null)}
-              >
-                <Text style={s.gold}>
-                  {t(l, trailDays(p) >= thresholds[node] ? "earned" : "locked")}
-                </Text>
-                <Text style={s.body}>
-                  {t(l, "required")} · {trailDays(p)}/{thresholds[node]}
-                </Text>
-                <Text style={s.muted}>{t(l, "routeInfo")}</Text>
-              </Sheet>
-            )}
-            {history && p && (
-              <Sheet
-                title={t(l, "assessmentHistory")}
-                close={() => setHistory(false)}
-              >
-                {p.assessments.map((v, i) => (
-                  <View key={v.id + "-" + i} style={s.panel}>
-                    <Text style={s.body}>
-                      {new Date(v.date).toLocaleString(l)}
-                    </Text>
-                    {ATTRIBUTES.map((a) => (
-                      <Text style={s.muted} key={a}>
-                        {attr(l, a)} · {ratingScore(v.ratings[a])}
-                      </Text>
+                        <PixelGlyph
+                          name={icons[i]}
+                          size={24}
+                          color={tab === v ? C.gold : C.muted}
+                        />
+                        <Text
+                          style={{
+                            color: tab === v ? C.gold : C.muted,
+                            fontSize: 12,
+                          }}
+                        >
+                          {t(l, v)}
+                        </Text>
+                      </Pressable>
                     ))}
                   </View>
-                ))}
-              </Sheet>
-            )}
-            {legacyCamp && p && <Sheet title={l === "en" ? "Camp companions" : "营地伙伴"} close={()=>setLegacyCamp(false)}><LivingCamp reduced={experience.reduce} p={p} l={l} save={persist} navigate={v=>{setLegacyCamp(false);setTab(v);}} record={()=>{setLegacyCamp(false);openLog("bouldering",null);}} /></Sheet>}
-            {completion && <Sheet title={l === "en" ? "Journey saved" : "旅程已保存"} close={()=>setCompletion(null)}><Completion session={completion.session} reward={completion.reward} l={l} reduced={experience.reduce} cue={experience.cue} home={()=>setCompletion(null)} recall={()=>{setFocusId(completion.session.id);setCompletion(null);setFormKey(k=>k+1);setTab("journal");}} /></Sheet>}
-            {feedback && (
-              <Sheet title={t(l, "reward")} close={() => setFeedback(null)}>
-                <RewardArt />
-                <Text style={s.level}>{feedback}</Text>
-                <Text style={s.muted}>{t(l, "disclaimer")}</Text>
-                <Button
-                  active
-                  label={t(l, "close")}
-                  onPress={() => setFeedback(null)}
-                />
-              </Sheet>
-            )}
-          </>
-        )}
-      </KeyboardAvoidingView>
+                </>
+              )}
+              {settings && (
+                <Sheet
+                  title={t(l, "settings")}
+                  close={() => setSettings(false)}
+                >
+                  <Button
+                    label={
+                      experience.muted
+                        ? l === "en"
+                          ? "Sound: muted · tap to enable"
+                          : "声音：静音 · 点击开启"
+                        : l === "en"
+                          ? "Sound: on"
+                          : "声音：开启"
+                    }
+                    onPress={() => experience.setMuted(!experience.muted)}
+                  />
+                  <Button
+                    label={
+                      (l === "en" ? "Reduce motion: " : "减少动效：") +
+                      (experience.reduce
+                        ? l === "en"
+                          ? "on"
+                          : "开启"
+                        : l === "en"
+                          ? "off"
+                          : "关闭")
+                    }
+                    onPress={() =>
+                      experience.setReduce(!experience.manualReduce)
+                    }
+                  />
+                  {experience.error && (
+                    <Text style={s.warning}>
+                      {l === "en"
+                        ? "Audio or preference storage unavailable."
+                        : "声音或偏好设置存储暂不可用。"}
+                    </Text>
+                  )}
+                  <Text style={s.body}>{t(l, "language")}</Text>
+                  {(["zh-CN", "en"] as Language[]).map((v) => (
+                    <Button
+                      key={v}
+                      label={v === "en" ? "English" : "简体中文"}
+                      active={l === v}
+                      onPress={() => {
+                        setL(v);
+                        queue.current = queue.current
+                          .catch(() => {})
+                          .then(() => saveLanguage(v))
+                          .catch(() => Alert.alert(t(v, "saveError")));
+                      }}
+                    />
+                  ))}
+                  <Text style={s.muted}>{t(l, "disclaimer")}</Text>
+                </Sheet>
+              )}
+              {quest && (
+                <Sheet
+                  title={questText(l, quest).title}
+                  close={() => setQuest(null)}
+                >
+                  <Text style={s.gold}>
+                    {quest.minutes} min · {t(l, quest.activity)}
+                  </Text>
+                  {questText(l, quest).steps.map((v, i) => (
+                    <Text key={i} style={s.body}>
+                      {i + 1}. {v}
+                    </Text>
+                  ))}
+                  <Text style={s.muted}>{t(l, "recordActual")}</Text>
+                  {(readiness === "pain" || readiness === "tired") && (
+                    <Text style={s.warning}>{t(l, "safety")}</Text>
+                  )}
+                  <Button
+                    active
+                    label={t(l, "startLog")}
+                    onPress={() => openLog(quest.activity, quest.skill)}
+                  />
+                </Sheet>
+              )}
+              {node !== null && p && (
+                <Sheet
+                  title={t(l, `node${node}` as CopyKey)}
+                  close={() => setNode(null)}
+                >
+                  <Text style={s.gold}>
+                    {t(
+                      l,
+                      trailDays(p) >= thresholds[node] ? "earned" : "locked",
+                    )}
+                  </Text>
+                  <Text style={s.body}>
+                    {t(l, "required")} · {trailDays(p)}/{thresholds[node]}
+                  </Text>
+                  <Text style={s.muted}>{t(l, "routeInfo")}</Text>
+                </Sheet>
+              )}
+              {history && p && (
+                <Sheet
+                  title={t(l, "assessmentHistory")}
+                  close={() => setHistory(false)}
+                >
+                  {p.assessments.map((v, i) => (
+                    <View key={v.id + "-" + i} style={s.panel}>
+                      <Text style={s.body}>
+                        {new Date(v.date).toLocaleString(l)}
+                      </Text>
+                      {ATTRIBUTES.map((a) => (
+                        <Text style={s.muted} key={a}>
+                          {attr(l, a)} · {ratingScore(v.ratings[a])}
+                        </Text>
+                      ))}
+                    </View>
+                  ))}
+                </Sheet>
+              )}
+              {legacyCamp && p && (
+                <Sheet
+                  title={l === "en" ? "Camp companions" : "营地伙伴"}
+                  close={() => setLegacyCamp(false)}
+                >
+                  <LivingCamp
+                    reduced={experience.reduce}
+                    p={p}
+                    l={l}
+                    save={persist}
+                    navigate={(v) => {
+                      setLegacyCamp(false);
+                      setTab(v);
+                    }}
+                    record={() => {
+                      setLegacyCamp(false);
+                      openLog("bouldering", null);
+                    }}
+                  />
+                </Sheet>
+              )}
+              {completion && (
+                <Sheet
+                  title={l === "en" ? "Journey saved" : "旅程已保存"}
+                  close={() => setCompletion(null)}
+                >
+                  <Completion
+                    session={completion.session}
+                    reward={completion.reward}
+                    l={l}
+                    reduced={experience.reduce}
+                    cue={experience.cue}
+                    home={() => setCompletion(null)}
+                    recall={() => {
+                      setFocusId(completion.session.id);
+                      setCompletion(null);
+                      setFormKey((k) => k + 1);
+                      setTab("journal");
+                    }}
+                  />
+                </Sheet>
+              )}
+              {feedback && (
+                <Sheet title={t(l, "reward")} close={() => setFeedback(null)}>
+                  <RewardArt />
+                  <Text style={s.level}>{feedback}</Text>
+                  <Text style={s.muted}>{t(l, "disclaimer")}</Text>
+                  <Button
+                    active
+                    label={t(l, "close")}
+                    onPress={() => setFeedback(null)}
+                  />
+                </Sheet>
+              )}
+            </>
+          )}
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </SafeAreaProvider>
   );
