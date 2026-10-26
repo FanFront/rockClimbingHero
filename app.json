@@ -28,7 +28,8 @@
           "microphonePermission": false,
           "enableBackgroundPlayback": false
         }
-      ]
+      ],
+      "expo-asset"
     ]
   }
 }
