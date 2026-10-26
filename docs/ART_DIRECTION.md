@@ -10,13 +10,13 @@
   paragraphs must remain high contrast and comfortably tappable.
 
 ## Palette
-- Midnight: `#0A1720`
-- Navy panel: `#102A35`
-- Ridge teal: `#16333F`
-- Explorer gold: `#F5BE6B`
-- Cream text: `#F7E7C8`
-- Mountain mint: `#68D4B5`
-- Lake blue: `#6CAFDA`
+- Midnight: `#0C1918`
+- Navy panel: `#142724`
+- Ridge teal: `#1D3530`
+- Explorer gold: `#EAC48B`
+- Cream text: `#F4F3E9`
+- Mountain mint: `#A5D5BA`
+- Lake blue: `#9BBFCB`
 
 ## Asset decisions
 - Original, project-owned scalable art uses a pixel-aligned `react-native-svg` scene:
@@ -67,3 +67,14 @@ Sound starts muted (explicitly enabled in Settings), mixes rather than ducks
 personal music, and pauses on background or leaving camp. Completion uses a
 save cue, one success haptic, then a short arrival cadence. Preferences persist
 separately from profile data. OS reduced-motion preference is always respected.
+
+## App-wide interface rules
+
+The world retains rectilinear pixel artwork; interaction surfaces use quiet native
+geometry and system Chinese text. Rounded panels do not change the scene's pixel
+grid. Selection uses sage with a visible state; a brass primary action is reserved
+for the next meaningful step. Do not style filters like save buttons. Use the
+shared primitives in `src/UI.tsx` and palette/type/spacing tokens in `src/theme.ts`.
+Companions are readable labeled rows below the world illustration, rather than
+requiring precise taps on decorative scenery. Long detail forms use a full-width
+reading surface. See `UI_REVIEW.md` for screen coverage and runtime evidence.
