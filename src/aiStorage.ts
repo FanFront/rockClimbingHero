@@ -1,3 +1,4 @@
+import { withoutAdvice } from "./coaching";
 import Storage from "expo-sqlite/kv-store";
 import * as SecureStore from "expo-secure-store";
 import * as FS from "expo-file-system/legacy";
@@ -53,7 +54,11 @@ export const deleteAIEntry = (id: string) =>
       await FS.deleteAsync(entry.attachment.uri, { idempotent: true });
     await Storage.setItem(
       "ascent.ai.entries",
-      JSON.stringify(all.filter((e) => e.id !== id)),
+      JSON.stringify(
+        all
+          .filter((e) => e.id !== id)
+          .map((e) => ({ ...e, context: withoutAdvice(e.context, id) })),
+      ),
     );
   });
 export async function retainAttachment(a: AIAttachment, id: string) {

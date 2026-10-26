@@ -1,3 +1,14 @@
+import {
+  coachingContext,
+  type ClimbProject,
+  type AttemptOutcome,
+} from "./coaching";
+import {
+  loadClimbs,
+  saveClimb,
+  recordClimbAttempt,
+  removeClimb,
+} from "./coachingStorage";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -40,9 +51,13 @@ export function AICoach({
   l,
   session,
   onBusy,
+  pain = false,
+  startInSettings = false,
 }: {
   l: Language;
   session?: Session;
+  pain?: boolean;
+  startInSettings?: boolean;
   onBusy: (busy: boolean) => void;
 }) {
   const zh = l !== "en",
@@ -51,7 +66,7 @@ export function AICoach({
     [selected, setSelected] = useState(""),
     [entries, setEntries] = useState<AIEntry[]>([]),
     [loading, setLoading] = useState(true),
-    [settings, setSettings] = useState(false),
+    [settings, setSettings] = useState(startInSettings),
     [scene, setScene] = useState<"route" | "attempt">(
       session ? "attempt" : "route",
     ),
@@ -64,6 +79,42 @@ export function AICoach({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [detail, setDetail] = useState<string>();
+  const [composing, setComposing] = useState(false),
+    [showEvidence, setShowEvidence] = useState(false),
+    [notice, setNotice] = useState("");
+  const [choosing, setChoosing] = useState(false),
+    [reusePhoto, setReusePhoto] = useState(true);
+  const [climbs, setClimbs] = useState<ClimbProject[]>([]),
+    [climbId, setClimbId] = useState(""),
+    [climbName, setClimbName] = useState(""),
+    [goal, setGoal] = useState(""),
+    [attemptNote, setAttemptNote] = useState(""),
+    [intent, setIntent] = useState<"next" | "review">("next"),
+    [showContext, setShowContext] = useState(false),
+    [legacy, setLegacy] = useState(false);
+  const project = climbs.find((p) => p.id === climbId);
+  const related = entries.filter((e) => e.climbId === climbId);
+  const inheritedPhoto = related.find((e) =>
+    e.attachment?.mime.startsWith("image/"),
+  )?.attachment;
+  const outgoingMedia = attachment || (reusePhoto ? inheritedPhoto : undefined);
+  const context = project
+    ? coachingContext(project, entries, intent === "review")
+    : "";
+  const selectClimb = (id: string) => {
+    setClimbId(id);
+    setAttemptNote("");
+    setComposing(false);
+    setNotice("");
+    setChoosing(false);
+    setReusePhoto(true);
+    setDetail(undefined);
+    setLegacy(false);
+    setQuestion("");
+    setAttachment(undefined);
+    setIntent("next");
+    void Storage.setItem("ascent.climb.active", id).catch(fail);
+  };
   const lock = useRef(false);
   const [provider, setProvider] = useState<Provider>("qwen"),
     [name, setName] = useState(""),
@@ -72,17 +123,23 @@ export function AICoach({
     [model, setModel] = useState(defaults.qwen.model),
     [editing, setEditing] = useState<string>();
   const refresh = async () => {
-    const [p, e, id] = await Promise.all([
+    const [p, e, id, projects] = await Promise.all([
       loadAIProfiles(),
       loadAIEntries(),
       Storage.getItem("ascent.ai.active"),
+      loadClimbs(),
     ]);
+    setClimbs(projects);
     setProfiles(p);
     setEntries(e);
     setSelected(p.some((v) => v.id === id) ? id! : p[0]?.id || "");
   };
   useEffect(() => {
     refresh()
+      .then(async () => {
+        const id = await Storage.getItem("ascent.climb.active");
+        if (id) setClimbId(id);
+      })
       .catch(() =>
         setError(
           copy(
@@ -160,7 +217,7 @@ export function AICoach({
             quality: 0.7,
           })
         : await Picker.launchImageLibraryAsync({
-            mediaTypes: scene === "route" ? ["images"] : ["images", "videos"],
+            mediaTypes: ["images", "videos"],
             quality: 0.7,
             videoMaxDuration: 30,
           });
@@ -204,9 +261,11 @@ export function AICoach({
       setSettings(true);
       return;
     }
-    if (!existing && !question.trim() && !attachment) return;
+    if (!existing && !project) return;
     if (
-      (existing?.attachment || attachment)?.mime.startsWith("video/") &&
+      (existing ? existing.attachment : outgoingMedia)?.mime.startsWith(
+        "video/",
+      ) &&
       profile.provider !== "qwen"
     ) {
       setError(
@@ -240,13 +299,34 @@ export function AICoach({
           id,
           date: new Date().toISOString(),
           scene,
-          question: question.trim(),
+          question:
+            question.trim() ||
+            (intent === "review"
+              ? copy(
+                  "回顾今天这条线路的尝试，下一次应该关注什么？",
+                  "Review today on this climb. What should I focus on next time?",
+                )
+              : copy(
+                  "根据这条线路的尝试，给我下一次的一个实验。",
+                  "Use this climb’s attempts to suggest one experiment for the next attempt.",
+                )),
+          climbId: project!.id,
+          context:
+            context +
+            "\nCurrent pain/readiness report: " +
+            (pain || session?.pain
+              ? "pain reported; do not suggest another climbing attempt"
+              : "no current pain flag") +
+            (session
+              ? "\nUser-selected training session: " + JSON.stringify(session)
+              : ""),
+          intent,
           provider: profile.provider,
           model: profile.model,
           status: "pending",
           sessionId: scene === "attempt" ? session?.id : undefined,
-          attachment: attachment
-            ? await retainAttachment(attachment, id)
+          attachment: outgoingMedia
+            ? await retainAttachment(outgoingMedia, id)
             : undefined,
         };
         try {
@@ -272,6 +352,7 @@ export function AICoach({
         !zh,
       );
       await updateAIEntry({ ...entry, answer, status: "complete" });
+      setComposing(false);
       await refresh();
     } catch {
       if (entry) {
@@ -308,15 +389,72 @@ export function AICoach({
         },
       ],
     );
+  const localChange = async (fn: () => Promise<void>) => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    onBusy(true);
+    setError("");
+    try {
+      await fn();
+      await refresh();
+    } catch {
+      setError(
+        copy(
+          "本机保存失败，输入仍保留，请重试。",
+          "Local save failed. Your input is kept; retry.",
+        ),
+      );
+    } finally {
+      lock.current = false;
+      setBusy(false);
+      onBusy(false);
+    }
+  };
+  const feedbackAdvice =
+    related.find(
+      (e) =>
+        e.id === detail && e.status === "complete" && e.intent !== "review",
+    ) || related.find((e) => e.status === "complete" && e.intent !== "review");
+  const recordOutcome = (outcome: AttemptOutcome) =>
+    void localChange(async () => {
+      if (!project) return;
+      const advice = feedbackAdvice;
+      await recordClimbAttempt(project.id, {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        date: new Date().toISOString(),
+        outcome,
+        note: attemptNote.trim(),
+        adviceId: advice?.id,
+        sessionId: session?.id,
+      });
+      setAttemptNote("");
+      setNotice(
+        copy(
+          "已保存在本机。需要时再获取下一步。",
+          "Saved on this phone. Ask for the next step when ready.",
+        ),
+      );
+    });
+  const labels: Record<AttemptOutcome, string> = {
+    stuck: copy("卡在这里", "Stuck here"),
+    helped: copy("有帮助", "Helped"),
+    same: copy("没变化", "No change"),
+    "not-tried": copy("还没试", "Not tried"),
+    sent: copy("完成了", "Sent"),
+    pain: copy("有疼痛，停止尝试", "Pain · stop"),
+  };
   if (loading)
     return <Text style={s.text}>{copy("正在读取…", "Loading…")}</Text>;
-  const current = entries.find((e) => e.id === detail);
+  const current =
+    entries.find((e) => e.id === detail) ||
+    related.find((e) => e.status === "complete");
   return (
     <View style={{ gap: 14 }}>
       <Text style={s.muted}>
         {copy(
-          "提问和建议保存在本机，直到你删除。仅点击“发送分析”才将所选文字和媒体发送给当前服务商（可能收费）。视频不分析声音。",
-          "Questions and advice stay on this phone until deleted. Send analysis uploads the selected text and media to your provider (charges may apply). Video audio is not analyzed.",
+          "同一条线路，一次只试一个变化。记录尝试可离线完成；只有点击获取建议或回顾才发送下方可查看的线路上下文与媒体（可能收费，视频不分析声音）。",
+          "One climb, one experiment at a time. Record outcomes offline. Only advice/review requests send the previewed climb context and media to your provider (charges may apply; no video audio).",
         )}
       </Text>
       {error && (
@@ -327,7 +465,10 @@ export function AICoach({
       {action(
         settings
           ? copy("返回分析", "Back to analysis")
-          : copy("API 密钥与服务商", "API keys & providers"),
+          : copy(
+              "教练设置 · 密钥与服务商",
+              "Coach settings · keys & providers",
+            ),
         () => setSettings(!settings),
       )}
       {settings ? (
@@ -457,155 +598,438 @@ export function AICoach({
         </>
       ) : (
         <>
-          <Text style={s.heading}>
-            {copy("当前服务商", "Active provider")}:{" "}
-            {profiles.find((p) => p.id === selected)?.name ||
-              copy("请先添加密钥", "Add a key first")}
-          </Text>
-          <View style={s.row}>
-            {action(
-              copy("线路求助", "Route advice"),
-              () => {
-                setScene("route");
-                setAttachment(undefined);
-              },
-              scene === "route",
+          {project &&
+            action(copy("切换 / 新建线路", "Switch / start a climb"), () =>
+              setChoosing(!choosing),
             )}
-            {action(
-              copy("尝试复盘", "Attempt review"),
-              () => setScene("attempt"),
-              scene === "attempt",
-            )}
-          </View>
-          <TextInput
-            accessibilityLabel={copy(
-              "提问或尝试记录",
-              "Question or attempt notes",
-            )}
-            style={[s.input, { minHeight: 100, textAlignVertical: "top" }]}
-            multiline
-            maxLength={6000}
-            editable={!busy}
-            value={question}
-            onChangeText={setQuestion}
-            placeholder={
-              scene === "route"
-                ? copy(
-                    "红色线路怎么完成？请建议脚点和动作顺序。",
-                    "How can I finish the red route?",
-                  )
-                : copy(
-                    "记录这次尝试：哪里卡住了？想改进什么？",
-                    "Describe your attempt and what you want to improve.",
-                  )
-            }
-            placeholderTextColor={C.muted}
-          />
-          <View style={s.row}>
-            {action(copy("拍照", "Take photo"), () => void pick(true))}
-            {action(
-              copy("选择图片 / 视频", "Choose photo / video"),
-              () => void pick(false),
-            )}
-          </View>
-          {attachment && (
-            <View style={s.card}>
-              <Text style={s.text}>{attachment.name}</Text>
-              {attachment.mime.startsWith("image/") && (
-                <Image
-                  source={{ uri: attachment.uri }}
-                  style={s.image}
-                  resizeMode="contain"
-                />
-              )}
-              {action(copy("移除附件", "Remove attachment"), () =>
-                setAttachment(undefined),
-              )}
-            </View>
-          )}
-          {action(
-            busy
-              ? copy("分析中…", "Analyzing…")
-              : copy("发送分析", "Send analysis"),
-            () => void run(),
-            true,
-            !question.trim() && !attachment,
-          )}
-          <Text style={s.muted}>
-            {copy(
-              "AI 建议可能出错，无法确认线路或保护安全。疼痛时停止相关动作。AI 分析不修改 XP 或能力属性。",
-              "AI advice may be wrong and cannot certify route or protection safety. Stop painful movements. Analysis does not change XP or attributes.",
-            )}
-          </Text>
-          {current && (
-            <View style={s.card}>
+          {(!project || choosing) && (
+            <>
+              {" "}
               <Text style={s.heading}>
-                {copy("分析详情", "Analysis details")}
+                {copy("正在攀登的线路", "Climbs you’re working on")}
               </Text>
-              <Text selectable style={s.text}>
-                {current.question}
-              </Text>
-              {current.attachment && (
-                <>
-                  {current.attachment.mime.startsWith("image/") ? (
-                    <Image
-                      source={{ uri: current.attachment.uri }}
-                      style={s.image}
-                      resizeMode="contain"
-                    />
-                  ) : (
-                    action(copy("打开保存的视频", "Open saved video"), () => {
-                      FS.getContentUriAsync(current.attachment!.uri)
-                        .then((uri) => {
-                          if (!media) throw new Error("viewer");
-                          return media.open(uri, current.attachment!.mime);
-                        })
-                        .catch(fail);
-                    })
+              {climbs.map((p) => (
+                <React.Fragment key={p.id}>
+                  {action(
+                    p.name +
+                      " · " +
+                      p.attempts.length +
+                      copy(" 条尝试/反馈", " attempts / feedback"),
+                    () => selectClimb(p.id),
+                    p.id === climbId,
                   )}
-                  <Text style={s.muted}>{current.attachment.name}</Text>
+                </React.Fragment>
+              ))}
+              {!project && (
+                <Text style={s.muted}>
+                  {copy(
+                    "给线路起个名字，照片、尝试和建议就不会散落在聊天里。请手动选择同一条线路，不会仅凭颜色自动匹配。",
+                    "Name a climb to keep its media, attempts and advice together. Select the route yourself; colors alone never identify a climb.",
+                  )}
+                </Text>
+              )}
+              {field(
+                copy(
+                  "新线路名称（如 北墙红线 V3）",
+                  "New climb name (e.g. North wall red V3)",
+                ),
+                climbName,
+                setClimbName,
+              )}
+              {field(
+                copy("想解决的动作 / 目标（选填）", "Move or goal (optional)"),
+                goal,
+                setGoal,
+              )}
+              {action(
+                copy("建立线路手记", "Start climb notebook"),
+                () =>
+                  void localChange(async () => {
+                    const id =
+                      Date.now().toString(36) +
+                      Math.random().toString(36).slice(2);
+                    await saveClimb({
+                      id,
+                      name: climbName.trim(),
+                      goal: goal.trim(),
+                      createdAt: new Date().toISOString(),
+                      attempts: [],
+                    });
+                    selectClimb(id);
+                    setClimbName("");
+                    setGoal("");
+                  }),
+                false,
+                !climbName.trim(),
+              )}
+            </>
+          )}
+          {project && (
+            <>
+              <Text style={s.heading}>{project.name}</Text>
+              <Text style={s.muted}>{project.goal}</Text>
+              <View style={s.row}>
+                {action(
+                  copy("攀登中 · 下一次尝试", "During climbing · next attempt"),
+                  () => {
+                    setIntent("next");
+                    setScene("attempt");
+                  },
+                  intent === "next",
+                )}
+                {action(
+                  copy(
+                    "结束后 · 今天的回顾",
+                    "After climbing · today’s review",
+                  ),
+                  () => {
+                    setIntent("review");
+                    setScene("attempt");
+                  },
+                  intent === "review",
+                )}
+              </View>
+              {current && (current.climbId === climbId || legacy) && (
+                <View style={s.card}>
+                  <Text style={s.heading}>
+                    {current.intent === "review"
+                      ? copy("今天的回顾", "Today’s review")
+                      : copy(
+                          "下一次，只关注这一件事",
+                          "One focus for the next attempt",
+                        )}
+                  </Text>
+                  <Text selectable style={s.text}>
+                    {current.question}
+                  </Text>
+                  <Text selectable style={s.text}>
+                    {current.answer ||
+                      copy(
+                        "尚未完成，可保留并重试。",
+                        "Not completed. Kept locally; retry when ready.",
+                      )}
+                  </Text>
+                  {current.attachment &&
+                    action(
+                      showEvidence
+                        ? copy("收起媒体", "Hide media")
+                        : copy(
+                            "查看这次的照片 / 视频",
+                            "View this entry’s media",
+                          ),
+                      () => setShowEvidence(!showEvidence),
+                    )}
+                  {current.attachment && showEvidence && (
+                    <>
+                      {current.attachment.mime.startsWith("image/") ? (
+                        <Image
+                          source={{ uri: current.attachment.uri }}
+                          style={s.image}
+                          resizeMode="contain"
+                        />
+                      ) : (
+                        action(
+                          copy("打开保存的视频", "Open saved video"),
+                          () => {
+                            FS.getContentUriAsync(current.attachment!.uri)
+                              .then((uri) => {
+                                if (!media) throw new Error("viewer");
+                                return media.open(
+                                  uri,
+                                  current.attachment!.mime,
+                                );
+                              })
+                              .catch(fail);
+                          },
+                        )
+                      )}
+                      <Text style={s.muted}>{current.attachment.name}</Text>
+                    </>
+                  )}
+                  <Text style={s.muted}>
+                    {current.provider} · {current.model} ·{" "}
+                    {new Date(current.date).toLocaleString(l)}
+                  </Text>
+                  {current.status !== "complete" &&
+                    action(
+                      copy("用当前密钥重试", "Retry with active key"),
+                      () => void run(current),
+                    )}
+                </View>
+              )}
+              <View style={s.card}>
+                <Text style={s.heading}>
+                  {copy("试完了？留下结果", "Tried it? Record what happened")}
+                </Text>
+                <Text style={s.muted}>
+                  {copy(
+                    "可以先离线记录卡住的位置，也可以反馈刚才试过的建议。不自动调用 AI，不发放 XP。",
+                    "Record where you got stuck offline, or report on advice you tried. No automatic AI request or XP.",
+                  )}
+                </Text>
+                {feedbackAdvice && (
+                  <Text numberOfLines={2} style={s.muted}>
+                    {copy("本次反馈关联建议：", "Feedback for advice: ")}
+                    {feedbackAdvice.answer}
+                  </Text>
+                )}
+                {field(
+                  copy(
+                    "发生了什么 / 动作纠正（选填）",
+                    "What happened / correction (optional)",
+                  ),
+                  attemptNote,
+                  setAttemptNote,
+                )}
+                <View style={s.row}>
+                  {(Object.keys(labels) as AttemptOutcome[]).map((o) => (
+                    <React.Fragment key={o}>
+                      {action(
+                        labels[o],
+                        () => recordOutcome(o),
+                        false,
+                        (o === "helped" || o === "same" || o === "not-tried") &&
+                          !feedbackAdvice,
+                      )}
+                    </React.Fragment>
+                  ))}
+                </View>
+              </View>
+              {notice && (
+                <Text accessibilityRole="alert" style={s.muted}>
+                  {notice}
+                </Text>
+              )}
+              {current &&
+                action(
+                  composing
+                    ? copy("收起补充", "Hide follow-up")
+                    : copy(
+                        "纠正建议 / 获取下一步",
+                        "Correct advice / ask for next step",
+                      ),
+                  () => setComposing(!composing),
+                )}
+              {(!current || composing || intent === "review") && (
+                <>
+                  <Text style={s.muted}>
+                    {copy(
+                      "补充哪里卡住了，或纠正之前的建议。空着也可以，已有尝试会一起带入。",
+                      "Describe a sticking point or correct earlier advice. You can leave this blank; the recorded attempts provide context.",
+                    )}
+                  </Text>
+                  <TextInput
+                    accessibilityLabel={copy(
+                      "提问或尝试记录",
+                      "Question or attempt notes",
+                    )}
+                    style={[
+                      s.input,
+                      { minHeight: 100, textAlignVertical: "top" },
+                    ]}
+                    multiline
+                    maxLength={6000}
+                    editable={!busy}
+                    value={question}
+                    onChangeText={setQuestion}
+                    placeholder={
+                      scene === "route"
+                        ? copy(
+                            "红色线路怎么完成？请建议脚点和动作顺序。",
+                            "How can I finish the red route?",
+                          )
+                        : copy(
+                            "记录这次尝试：哪里卡住了？想改进什么？",
+                            "Describe your attempt and what you want to improve.",
+                          )
+                    }
+                    placeholderTextColor={C.muted}
+                  />
+                  <View style={s.row}>
+                    {action(copy("拍照", "Take photo"), () => void pick(true))}
+                    {action(
+                      copy("选择图片 / 视频", "Choose photo / video"),
+                      () => void pick(false),
+                    )}
+                  </View>
+                  {attachment && (
+                    <View style={s.card}>
+                      <Text style={s.text}>{attachment.name}</Text>
+                      {attachment.mime.startsWith("image/") && (
+                        <Image
+                          source={{ uri: attachment.uri }}
+                          style={s.image}
+                          resizeMode="contain"
+                        />
+                      )}
+                      {action(copy("移除附件", "Remove attachment"), () =>
+                        setAttachment(undefined),
+                      )}
+                    </View>
+                  )}
+                  {!attachment && inheritedPhoto && (
+                    <View style={s.card}>
+                      <Text style={s.muted}>
+                        {copy(
+                          reusePhoto
+                            ? "沿用这条线路的照片（可选择新媒体替换）"
+                            : "旧照片不随本次请求发送",
+                          reusePhoto
+                            ? "Using this climb’s saved photo (choose new media to replace)"
+                            : "Saved photo excluded from this request",
+                        )}
+                      </Text>
+                      {action(
+                        reusePhoto
+                          ? copy("不发送旧照片", "Exclude saved photo")
+                          : copy("沿用旧照片", "Include saved photo"),
+                        () => setReusePhoto(!reusePhoto),
+                      )}
+                      <Image
+                        source={{ uri: inheritedPhoto.uri }}
+                        style={s.image}
+                        resizeMode="contain"
+                      />
+                    </View>
+                  )}
+                  {action(
+                    showContext
+                      ? copy("收起发送内容", "Hide request context")
+                      : copy(
+                          "查看将发送的线路上下文",
+                          "Preview context to send",
+                        ),
+                    () => setShowContext(!showContext),
+                  )}
+                  {showContext && (
+                    <Text selectable style={s.muted}>
+                      {context}
+                      {"\n"}
+                      {copy("当前疼痛标记：", "Current pain flag: ")}
+                      {String(pain || !!session?.pain)}
+                      {session ? "\n" + JSON.stringify(session) : ""}
+                      {"\n"}
+                      {outgoingMedia?.name || copy("无媒体", "No media")}
+                    </Text>
+                  )}
+                  {action(
+                    busy
+                      ? copy("分析中…", "Analyzing…")
+                      : intent === "review"
+                        ? copy("回顾今天的尝试", "Review today’s attempts")
+                        : copy(
+                            "给下一次一个实验",
+                            "One experiment for next attempt",
+                          ),
+                    () => void run(),
+                    true,
+                    !project ||
+                      (intent === "review" &&
+                        !project.attempts.some(
+                          (a) =>
+                            new Date(a.date).toDateString() ===
+                            new Date().toDateString(),
+                        )),
+                  )}
+                  <Text style={s.muted}>
+                    {copy(
+                      "AI 建议可能出错，无法确认线路或保护安全。疼痛时停止相关动作。AI 分析不修改 XP 或能力属性。",
+                      "AI advice may be wrong and cannot certify route or protection safety. Stop painful movements. Analysis does not change XP or attributes.",
+                    )}
+                  </Text>
                 </>
               )}
-              <Text style={s.muted}>
-                {current.provider} · {current.model} ·{" "}
-                {new Date(current.date).toLocaleString(l)}
+              <Text style={s.heading}>
+                {copy("这条线路的尝试与建议", "This climb’s attempts & advice")}
               </Text>
-              <Text selectable style={s.text}>
-                {current.answer ||
-                  copy(
-                    "尚未完成，可保留并重试。",
-                    "Not completed. Kept locally; retry when ready.",
+              {[...project.attempts].reverse().map((a) => (
+                <View key={a.id} style={s.card}>
+                  <Text style={s.text}>
+                    {labels[a.outcome]} · {new Date(a.date).toLocaleString(l)}
+                  </Text>
+                  <Text style={s.text}>{a.note}</Text>
+                  {a.adviceId && (
+                    <Text style={s.muted}>
+                      {copy("对应建议：", "Advice: ")}
+                      {related.find((e) => e.id === a.adviceId)?.question ||
+                        copy("建议已删除", "Advice deleted")}
+                    </Text>
                   )}
-              </Text>
-              {current.status !== "complete" &&
-                action(
-                  copy("用当前密钥重试", "Retry with active key"),
-                  () => void run(current),
-                )}
-              {action(copy("删除此分析", "Delete analysis"), () =>
-                remove(current),
-              )}
-            </View>
-          )}
-          <Text style={s.heading}>
-            {copy("本机分析历史", "On-device analysis history")}
-          </Text>
-          {!entries.length && (
-            <Text style={s.muted}>
-              {copy("还没有分析记录。", "No analyses yet.")}
-            </Text>
-          )}
-          {entries.map((e) => (
-            <View key={e.id} style={s.card}>
+                </View>
+              ))}
+              {related.map((e) => (
+                <View key={e.id} style={s.card}>
+                  {action(
+                    (e.intent === "review"
+                      ? copy("回顾", "Review")
+                      : copy("建议", "Advice")) +
+                      " · " +
+                      e.question.slice(0, 55),
+                    () => setDetail(e.id),
+                  )}
+                  {action(copy("删除这条建议", "Delete this advice"), () =>
+                    remove(e),
+                  )}
+                  <Text style={s.muted}>
+                    {new Date(e.date).toLocaleString(l)} · {e.status}
+                  </Text>
+                </View>
+              ))}
               {action(
-                `${e.scene === "route" ? copy("线路", "Route") : copy("复盘", "Review")} · ${e.question.slice(0, 60) || e.attachment?.name || ""}`,
-                () => setDetail(e.id),
+                copy("删除整条线路手记", "Delete this climb notebook"),
+                () =>
+                  Alert.alert(
+                    copy("删除线路及其记录？", "Delete climb and its records?"),
+                    copy(
+                      "删除本机尝试、建议和附件，原训练记录不受影响。",
+                      "Deletes local climb attempts, advice and attachments; training records remain.",
+                    ),
+                    [
+                      { text: copy("取消", "Cancel") },
+                      {
+                        text: copy("删除", "Delete"),
+                        style: "destructive",
+                        onPress: () =>
+                          void localChange(async () => {
+                            for (const e of related) await deleteAIEntry(e.id);
+                            await removeClimb(project.id);
+                            setClimbId("");
+                            setDetail(undefined);
+                          }),
+                      },
+                    ],
+                  ),
               )}
-              <Text style={s.muted}>
-                {new Date(e.date).toLocaleString(l)} · {e.provider} · {e.status}
-              </Text>
-            </View>
-          ))}
+            </>
+          )}
+          {action(
+            legacy
+              ? copy("收起未归档的旧分析", "Hide earlier analyses")
+              : copy("未归档的旧分析", "Earlier unfiled analyses"),
+            () => setLegacy(!legacy),
+          )}
+          {legacy &&
+            entries
+              .filter((e) => !e.climbId)
+              .map((e) => (
+                <View key={e.id} style={s.card}>
+                  <Text style={s.text}>{e.question}</Text>
+                  <Text selectable style={s.text}>
+                    {e.answer}
+                  </Text>
+                  {project &&
+                    action(
+                      copy("归入当前线路", "File under current climb"),
+                      () =>
+                        void localChange(() =>
+                          updateAIEntry({ ...e, climbId: project.id }),
+                        ),
+                    )}
+                  {action(copy("删除旧分析", "Delete earlier analysis"), () =>
+                    remove(e),
+                  )}
+                </View>
+              ))}
         </>
       )}
     </View>

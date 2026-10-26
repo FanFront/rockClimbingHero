@@ -501,8 +501,8 @@ function Journal({
       <Button
         label={
           l === "en"
-            ? "AI attempt review · text, photo or video"
-            : "AI 尝试复盘 · 文字、图片或视频"
+            ? "Climb notebook · attempts & next steps"
+            : "线路手记 · 尝试与下一步"
         }
         onPress={() => onAnalyze()}
       />
@@ -531,7 +531,7 @@ function Journal({
                 {!!v.notes && <Text style={s.body}>{v.notes}</Text>}
                 <Button
                   label={
-                    l === "en" ? "Analyze this attempt" : "AI 复盘本次尝试"
+                    l === "en" ? "Continue from this attempt" : "从本次尝试继续"
                   }
                   onPress={() => {
                     setHistory(false);
@@ -760,6 +760,7 @@ export default function App() {
   const [savingSession, setSavingSession] = useState(false);
   const savingSessionRef = useRef(false);
   const [aiOpen, setAIOpen] = useState(false);
+  const [aiSettings, setAISettings] = useState(false);
   const [aiSession, setAISession] = useState<Session>();
   const aiBusy = useRef(false);
   const queue = useRef(Promise.resolve());
@@ -961,17 +962,6 @@ export default function App() {
                   >
                     {tab === "camp" && (
                       <>
-                        <Button
-                          label={
-                            l === "en"
-                              ? "AI route advice & attempt review"
-                              : "AI 线路求助与尝试复盘"
-                          }
-                          onPress={() => {
-                            setAISession(undefined);
-                            setAIOpen(true);
-                          }}
-                        />
                         <CampHome
                           name={p.name}
                           l={l}
@@ -997,6 +987,18 @@ export default function App() {
                             setFocusId(recent?.id);
                             setFormKey((k) => k + 1);
                             setTab("journal");
+                          }}
+                        />
+                        <Button
+                          label={
+                            l === "en"
+                              ? "Continue climbing · route notebook"
+                              : "继续攀登 · 线路手记"
+                          }
+                          onPress={() => {
+                            setAISettings(false);
+                            setAISession(undefined);
+                            setAIOpen(true);
                           }}
                         />
                         <Button
@@ -1179,6 +1181,7 @@ export default function App() {
                         initial={initial}
                         readiness={readiness}
                         onAnalyze={(v) => {
+                          setAISettings(false);
                           setAISession(v);
                           setAIOpen(true);
                         }}
@@ -1223,13 +1226,15 @@ export default function App() {
               )}
               {aiOpen && (
                 <Sheet
-                  title={l === "en" ? "AI climbing assistant" : "AI 攀岩助手"}
+                  title={l === "en" ? "Climb notebook" : "线路手记"}
                   close={() => {
                     if (!aiBusy.current) setAIOpen(false);
                   }}
                 >
                   <AICoach
                     l={l}
+                    startInSettings={aiSettings}
+                    pain={readiness === "pain"}
                     session={aiSession}
                     onBusy={(v) => {
                       aiBusy.current = v;
@@ -1276,6 +1281,19 @@ export default function App() {
                         : "声音或偏好设置存储暂不可用。"}
                     </Text>
                   )}
+                  <Button
+                    label={
+                      l === "en"
+                        ? "Climbing coach · providers & keys"
+                        : "攀登教练 · 服务商与密钥"
+                    }
+                    onPress={() => {
+                      setSettings(false);
+                      setAISettings(true);
+                      setAISession(undefined);
+                      setAIOpen(true);
+                    }}
+                  />
                   <Text style={s.body}>{t(l, "language")}</Text>
                   {(["zh-CN", "en"] as Language[]).map((v) => (
                     <Button
