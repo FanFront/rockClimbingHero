@@ -37,9 +37,22 @@ development/release APK. See [Expo](https://docs.expo.dev/get-started/start-deve
 
 ## Build installable APK with GitHub Actions (no iOS)
 
-Open **Actions → Build Android APK → Run workflow** and, when the job succeeds,
-download the `rock-climbing-hero-android-apk` artifact. You can install its APK
-on an Android phone after allowing installation from that source.
+Open **Actions → Build Android APK → Run workflow** and choose
+`target_abi`:
+- **arm64-v8a (default):** smaller/faster build for modern physical ARM64 phones.
+- **all:** universal multi-architecture build for wider Android device/emulator compatibility.
+
+When the job succeeds, download the `rock-climbing-hero-android-apk` artifact.
+You can install its APK on an Android phone after allowing installation from that source.
+
+Builds now cache npm downloads and the Gradle user home, and use
+`--build-cache`; the first build warms these caches, so compare at least
+two subsequent runs before evaluating speed. Since the repository does not
+yet include a committed `package-lock.json`, this workflow intentionally
+keeps `npm install` rather than `npm ci` and keys the npm download cache
+by `package.json`. Future work can introduce a generated and verified lockfile
+to improve reproducibility. Gradle caching does not guarantee reuse of every
+CMake output.
 
 The release APK workflow compiles with the standard local Gradle signing
 configuration. **This is for personal testing, not production Play Store release.**
