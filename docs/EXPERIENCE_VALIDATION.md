@@ -71,3 +71,17 @@ verify one completion, actual XP and a single haptic; return to camp and recall 
 force close/reopen; edit then delete the source and check the memory; switch language;
 enable reduced motion; background/foreground repeatedly and verify one ambient
 track with no background playback; repeat muted and while personal music plays.
+
+## Successful Android build
+
+- Release APK build completed successfully:
+  https://github.com/FanFront/rockClimbingHero/actions/runs/40287577301
+- Download artifact (contains the ARM64 release APK):
+  https://github.com/FanFront/rockClimbingHero/actions/runs/40287577301/artifacts/12635390446
+- Built application source: `17126da62c67ff4f8c26dd68beae257378ebba35`.
+  Subsequent commits only add validation documentation and screenshots.
+- PR automated validation passed on the documented source.
+
+A successful compile is not device validation; the device checklist above remains
+open. GitHub artifact downloads require repository access and expire according to
+the repository's Actions artifact retention policy.
