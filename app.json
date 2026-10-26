@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Rock Climbing Hero",
+    "slug": "rock-climbing-hero",
+    "scheme": "rockclimbinghero",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "platforms": [
+      "android"
+    ],
+    "android": {
+      "package": "com.fanfront.rockclimbinghero",
+      "versionCode": 1,
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "newArchEnabled": true,
+    "jsEngine": "hermes",
+    "extra": {
+      "appTheme": "ASCENT Expedition RPG"
+    }
+  }
+}
