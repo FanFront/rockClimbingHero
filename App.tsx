@@ -1047,6 +1047,7 @@ export default function App() {
     profileRef.current = saved;
     setP(saved);
     setSaveError(false);
+    Keyboard.dismiss();
     experience.cue("saved");
     setCompletion({ session: v, reward: message });
     setTab("camp");

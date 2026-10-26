@@ -255,6 +255,12 @@ export function Completion({
   recall: () => void;
   cue: (name: Cue) => void;
 }) {
+  // Prevent the second tap of a fast save gesture from dismissing the new receipt.
+  const [interactive, setInteractive] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setInteractive(true), 250);
+    return () => clearTimeout(timer);
+  }, []);
   const [arrived, setArrived] = useState(reduced);
   useEffect(() => {
     if (reduced || arrived) return;
@@ -302,7 +308,13 @@ export function Completion({
           </Text>
         </Pressable>
       )}
-      <Pressable accessibilityRole="button" style={e.primary} onPress={home}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !interactive }}
+        disabled={!interactive}
+        style={[e.primary, !interactive && { opacity: 0.65 }]}
+        onPress={home}
+      >
         <Text style={e.primaryText}>
           {l === "en" ? "Return to camp" : "返回营地"}
         </Text>
@@ -310,6 +322,8 @@ export function Completion({
       <Pressable
         accessibilityRole="button"
         style={e.secondary}
+        disabled={!interactive}
+        accessibilityState={{ disabled: !interactive }}
         onPress={recall}
       >
         <Text style={e.link}>
