@@ -1,6 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import { CampScene } from "./CampScene";
+import { SectionHeading } from "./UI";
+import { Action } from "./UI";
+import React, { useState } from "react";
 import {
-  Animated,
   Modal,
   Pressable,
   ScrollView,
@@ -9,10 +11,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Rect, Path, G } from "react-native-svg";
+import Svg, { Rect, Path } from "react-native-svg";
 import type { AppData } from "./domain";
 import type { Language } from "./i18n";
-import { C } from "./theme";
+import { C, UI } from "./theme";
 import {
   EVENTS,
   ITEMS,
@@ -72,235 +74,85 @@ export function LivingCamp({
   record: () => void;
 }) {
   const [panel, setPanel] = useState<string | null>(null);
-  const pulse = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (reduced) return;
-    const a = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    a.start();
-    return () => a.stop();
-  }, [pulse, reduced]);
   const w = world(p),
     inventory = owned(p),
     pending = w.encounters.find((e) => e.choice === undefined && !e.frozen);
   const copy = (zh: string, en: string) => (l === "en" ? en : zh);
   const action = (label: string, fn: () => void) => (
-    <Pressable accessibilityRole="button" onPress={fn} style={s.button}>
-      <Text style={s.text}>{label}</Text>
-    </Pressable>
-  );
-  const object = (
-    id: string,
-    label: string,
-    left: number,
-    top: number,
-    child: React.ReactNode,
-    fn: () => void,
-  ) => (
-    <Pressable
-      key={id}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={fn}
-      style={[s.object, { left: `${left}%`, top: `${top}%` }]}
-    >
-      {child}
-      <Text style={s.label}>{label}</Text>
-    </Pressable>
+    <Action label={label} onPress={fn} />
   );
   return (
     <>
-      <View style={s.scene}>
-        <Svg
-          width="100%"
-          height="100%"
-          viewBox="0 0 360 420"
-          preserveAspectRatio="none"
+      <CampScene
+        direction="morning"
+        panorama
+        reduced={reduced}
+        marked={!!p.sessions.length}
+      />
+      <SectionHeading
+        title={copy("总有人为你留个位置", "There’s a place for you here")}
+        note={copy(
+          "和伙伴聊聊，看看一路带回的收藏。",
+          "Catch up with companions and the keepsakes you brought home.",
+        )}
+      />
+      {NPCS.map((npc) => (
+        <Pressable
+          key={npc.id}
+          accessibilityRole="button"
+          onPress={() => setPanel(npc.id)}
+          style={({ pressed }) => [s.companion, pressed && { opacity: 0.75 }]}
         >
-          <Rect width="360" height="420" fill="#153c4a" />
-          {Array.from({ length: 24 }, (_, i) => (
-            <Rect
-              key={i}
-              x={(i * 71 + 11) % 354}
-              y={(i * 31) % 120}
-              width="2"
-              height="2"
-              fill={i % 3 ? "#81aaa8" : "#ffdc9d"}
-            />
-          ))}
-          <Path
-            d="M0 170H25V140H45V120H65V90H80V110H100V140H120V120H140V80H155V50H170V80H185V110H210V140H230V110H250V85H270V120H290V150H320V130H340V160H360V290H0Z"
-            fill="#416b76"
+          <Sprite color={npc.color} size={56} />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={s.text}>{say(l, npc.name)}</Text>
+            <Text style={s.muted}>
+              {copy("坐下来聊聊 · 信任 ", "Sit and talk · Trust ")}
+              {trust(p, npc.id)}
+            </Text>
+          </View>
+          <Text style={s.muted}>›</Text>
+        </Pressable>
+      ))}
+      {action(copy("背包与旅途收藏", "Pack & keepsakes"), () =>
+        setPanel("pack"),
+      )}
+      <SectionHeading title={copy("营地里的其他去处", "Around camp")} />
+      {action(
+        copy("委托板 · 按自己的节奏", "Commission board · your own pace"),
+        () => navigate("quests"),
+      )}
+      {action(
+        copy("路标 · 看看走过的路", "Trail signs · revisit the journey"),
+        () => {
+          save({
+            ...p,
+            world: { ...w, visited: [...new Set([...w.visited, "grove"])] },
+          });
+          navigate("map");
+        },
+      )}
+      {action(copy("探险者 · 装扮与成长", "Explorer · outfit & growth"), () =>
+        navigate("hero"),
+      )}
+      {action(copy("回到今天的攀登记录", "Record today’s climbing"), record)}
+      {!!w.placed.filter((i) => inventory.includes(i)).length && (
+        <>
+          <SectionHeading
+            title={copy("留在营地的小物", "Little details in camp")}
           />
-          <Path
-            d="M140 80H155V50H170V80H180V96H168V82H155V96H140Z"
-            fill="#b6d4c7"
-          />
-          <Path
-            d="M0 219H40V205H100V222H140V210H220V220H280V201H330V217H360V420H0Z"
-            fill="#214c49"
-          />
-          <Path
-            d="M180 200H200V235H218V270H205V305H230V350H250V420H150V370H168V335H160V300H180V260H171Z"
-            fill="#48665a"
-          />
-          {Array.from({ length: 12 }, (_, i) => (
-            <G
-              key={i}
-              x={i < 6 ? i * 21 : 255 + (i - 6) * 22}
-              y={125 + (i % 3) * 19}
-            >
-              <Rect x="-2" y="35" width="5" height="70" fill="#4f5442" />
-              <Path
-                d="M0 0H5V12H12V24H18V36H24V49H-20V36H-14V24H-8V12H0Z"
-                fill={i % 2 ? "#123b3b" : "#1a4541"}
-              />
-              <Rect x="-7" y="30" width="10" height="3" fill="#326b57" />
-            </G>
-          ))}
-          <Path
-            d="M15 281H23V265H31V249H39V233H47V217H55V201H63V217H71V233H79V249H87V265H95V281Z"
-            fill="#d6a76a"
-          />
-          <Path
-            d="M55 201H63V217H71V233H79V249H87V265H95V281H55Z"
-            fill="#916e4d"
-          />
-          <Path d="M43 281V257H49V241H55V281Z" fill="#21363a" />
-          <Rect x="269" y="212" width="6" height="60" fill="#99764c" />
-          <Path d="M249 215H290V234H249Z" fill="#c7a86d" />
-          {Array.from({ length: 35 }, (_, i) => (
-            <Rect
-              key={i}
-              x={(i * 47 + 13) % 356}
-              y={285 + ((i * 31) % 130)}
-              width={i % 2 ? 4 : 7}
-              height="3"
-              fill={i % 3 ? "#35614e" : "#7a9160"}
-            />
-          ))}
-          <Rect x="153" y="323" width="49" height="5" fill="#966e47" />
-          <Rect x="163" y="330" width="37" height="4" fill="#4b3c32" />
-        </Svg>
-        <Text style={s.caption}>
-          {copy("松火营地 · 暮色", "PINEFIRE · DUSK")}
-        </Text>
-        {object(
-          "tent",
-          copy("背包", "Pack"),
-          2,
-          47,
-          <Sprite color="#d6a76a" item />,
-          () => setPanel("pack"),
-        )}
-        {object(
-          "board",
-          copy("委托板", "Board"),
-          72,
-          40,
-          <Sprite color="#c79e69" item />,
-          () => navigate("quests"),
-        )}
-        {object(
-          "map",
-          copy(`路标 · ${w.visited.length}`, `Trail · ${w.visited.length}`),
-          74,
-          70,
-          <Sprite color="#89bdb9" item />,
-          () => {
-            save({
-              ...p,
-              world: { ...w, visited: [...new Set([...w.visited, "grove"])] },
-            });
-            navigate("map");
-          },
-        )}
-        {NPCS.map((npc, i) =>
-          object(
-            npc.id,
-            say(l, npc.name).split(" · ")[0],
-            [12, 65, 29][i],
-            [68, 57, 39][i],
-            <Sprite color={npc.color} />,
-            () => setPanel(npc.id),
-          ),
-        )}
-        {object(
-          "hero",
-          p.name,
-          42,
-          65,
-          <Animated.View
-            style={{
-              transform: [
-                {
-                  translateY: pulse.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -3],
-                  }),
-                },
-              ],
-            }}
-          >
-            <Sprite
-              color={
-                w.equipped !== undefined && inventory.includes(w.equipped)
-                  ? ITEMS[w.equipped].color
-                  : "#79b6cc"
-              }
-            />
-          </Animated.View>,
-          () => navigate("hero"),
-        )}
-        {object(
-          "fire",
-          copy("篝火 · 记录", "Fire · Log"),
-          40,
-          47,
-          <Animated.View
-            style={{
-              opacity: pulse.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.65, 1],
-              }),
-            }}
-          >
-            <Svg width={64} height={64} viewBox="0 0 32 32">
-              <Path d="M6 28V17H10V12H14V3H18V10H22V16H26V28Z" fill="#e58f4f" />
-              <Path d="M11 28V19H15V13H19V21H22V28Z" fill="#ffe2a0" />
-            </Svg>
-          </Animated.View>,
-          record,
-        )}
-        {w.placed
-          .filter((i) => inventory.includes(i))
-          .slice(0, 5)
-          .map((i, n) => (
-            <View
-              key={i}
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                left: `${4 + n * 16}%`,
-                bottom: 4,
-              }}
-            >
-              <Sprite color={ITEMS[i].color} item size={32} />
-            </View>
-          ))}
-      </View>
+          <View style={s.grid}>
+            {w.placed
+              .filter((i) => inventory.includes(i))
+              .map((i) => (
+                <View key={i} style={s.card}>
+                  <Sprite color={ITEMS[i].color} item size={40} />
+                  <Text style={s.text}>{say(l, ITEMS[i].name)}</Text>
+                </View>
+              ))}
+          </View>
+        </>
+      )}
       {pending &&
         action(
           copy("✦ 冒险战报 · 有故事等你选择", "✦ Adventure · A choice awaits"),
@@ -312,7 +164,7 @@ export function LivingCamp({
       {panel && (
         <Modal
           transparent
-          animationType="fade"
+          animationType={reduced ? "none" : "fade"}
           onRequestClose={() => setPanel(null)}
         >
           <SafeAreaView style={s.scrim}>
@@ -544,10 +396,17 @@ export function LivingCamp({
   );
 }
 const s = StyleSheet.create({
+  companion: {
+    ...UI.panel,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
   scene: {
     height: 440,
     backgroundColor: "#153c4a",
-    borderWidth: 2,
+    borderRadius: 16,
+    borderWidth: 1,
     borderColor: C.line,
     overflow: "hidden",
   },
@@ -579,24 +438,28 @@ const s = StyleSheet.create({
     minHeight: 48,
     justifyContent: "center",
   },
-  text: { color: C.cream, fontSize: 15, lineHeight: 23 },
-  muted: { color: C.muted, fontSize: 12, lineHeight: 19 },
+  text: { ...UI.body },
+  muted: { ...UI.muted },
   title: { color: C.gold, fontSize: 22, fontWeight: "bold" },
   scrim: {
     flex: 1,
     backgroundColor: "#000b",
-    justifyContent: "center",
-    padding: 12,
+    justifyContent: "flex-end",
+    paddingTop: 20,
   },
   sheet: {
-    maxHeight: "94%",
+    height: "96%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
     backgroundColor: C.bg,
     borderColor: C.line,
-    borderWidth: 2,
+    borderWidth: 0,
   },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   card: {
-    padding: 10,
+    padding: 16,
+    borderRadius: 14,
     backgroundColor: C.panel,
     flexGrow: 1,
     flexBasis: "44%",

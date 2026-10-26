@@ -6,10 +6,12 @@ export function CampScene({
   direction = "dusk",
   reduced = false,
   marked = false,
+  panorama = false,
 }: {
   direction?: CampDirection;
   reduced?: boolean;
   marked?: boolean;
+  panorama?: boolean;
 }) {
   const glow = useRef(new Animated.Value(0.8)).current;
   useEffect(() => {
@@ -42,13 +44,16 @@ export function CampScene({
         : "#51485b";
   return (
     <View
-      style={styles.scene}
+      style={[
+        styles.scene,
+        panorama && { aspectRatio: 180 / 140, borderRadius: 18 },
+      ]}
       accessibilityLabel="Mountain camp, explorer and lantern"
     >
       <Svg
         width="100%"
         height="100%"
-        viewBox="0 0 180 190"
+        viewBox={panorama ? "0 40 180 140" : "0 0 180 190"}
         preserveAspectRatio="xMidYMid slice"
       >
         <Rect width="180" height="190" fill={sky} />
@@ -132,7 +137,11 @@ export function CampScene({
       </Svg>
       <Animated.View
         pointerEvents="none"
-        style={[styles.fire, { opacity: glow }]}
+        style={[
+          styles.fire,
+          panorama && { top: "65%", height: "17%" },
+          { opacity: glow },
+        ]}
       >
         <Svg width="100%" height="100%" viewBox="0 0 20 24">
           <Path d="M2 23V14H6V9H9V1H12V9H15V14H18V23Z" fill="#dc854d" />
