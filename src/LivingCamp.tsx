@@ -9,10 +9,10 @@ import {EVENTS, ITEMS, NPCS, chooseAdventure, owned, say, trust, world} from './
 function Sprite({color, size=64, item=false}:{color:string;size?:number;item?:boolean}) {
  return <Svg width={size} height={size} viewBox="0 0 24 24"><Rect x="3" y="21" width="18" height="2" fill="#071c24"/>{item?<><Path d="M6 5H18V8H21V19H18V21H6V19H3V8H6Z" fill={color}/><Rect x="6" y="9" width="12" height="2" fill="#fff2bb"/><Rect x="10" y="14" width="4" height="4" fill="#24444d"/></>:<><Rect x="7" y="3" width="10" height="8" fill="#edc798"/><Path d="M5 6V3H8V1H16V3H19V6Z" fill={color}/><Rect x="9" y="7" width="2" height="2" fill="#122d39"/><Rect x="15" y="7" width="2" height="2" fill="#122d39"/><Path d="M6 11H18V13H20V19H16V17H8V19H4V13H6Z" fill={color}/><Rect x="7" y="18" width="4" height="4" fill="#51727b"/><Rect x="14" y="18" width="4" height="4" fill="#51727b"/><Rect x="8" y="13" width="2" height="3" fill="#f5dfa5"/></>}</Svg>;
 }
-export function LivingCamp({p,l,save,navigate,record}:{p:AppData;l:Language;save:(p:AppData)=>void;navigate:(tab:'quests'|'map'|'hero')=>void;record:()=>void}) {
+export function LivingCamp({p,l,save,navigate,record,reduced=false}:{reduced?:boolean;p:AppData;l:Language;save:(p:AppData)=>void;navigate:(tab:'quests'|'map'|'hero')=>void;record:()=>void}) {
  const [panel,setPanel]=useState<string|null>(null);
  const pulse=useRef(new Animated.Value(0)).current;
- useEffect(()=>{const a=Animated.loop(Animated.sequence([Animated.timing(pulse,{toValue:1,duration:1000,useNativeDriver:true}),Animated.timing(pulse,{toValue:0,duration:1000,useNativeDriver:true})]));a.start();return()=>a.stop();},[pulse]);
+ useEffect(()=>{if(reduced)return;const a=Animated.loop(Animated.sequence([Animated.timing(pulse,{toValue:1,duration:1000,useNativeDriver:true}),Animated.timing(pulse,{toValue:0,duration:1000,useNativeDriver:true})]));a.start();return()=>a.stop();},[pulse,reduced]);
  const w=world(p), inventory=owned(p), pending=w.encounters.find(e=>e.choice===undefined&&!e.frozen);
  const copy=(zh:string,en:string)=>l==='en'?en:zh;
  const action=(label:string,fn:()=>void)=><Pressable accessibilityRole="button" onPress={fn} style={s.button}><Text style={s.text}>{label}</Text></Pressable>;

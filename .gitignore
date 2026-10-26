@@ -16,3 +16,6 @@ ios/
 !modules/*/android/**
 modules/*/android/build/
 modules/*/android/.gradle/
+
+# Local development scratch
+work/

@@ -1,8 +1,11 @@
+import { CampHome, Completion, useExperience } from "./src/experience";
 import { LivingCamp } from "./src/LivingCamp";
 import { beginAdventure, reconcileWorld } from "./src/living";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Animated,
   Modal,
   Pressable,
@@ -152,7 +155,7 @@ function Sheet({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={close}>
       <SafeAreaView style={s.scrim}>
-        <View style={s.sheet}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s.sheet}>
           <View style={s.row}>
             <Text style={[s.title, { flex: 1 }]}>{title}</Text>
             <Pressable
@@ -170,7 +173,7 @@ function Sheet({
           >
             {children}
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );
@@ -241,6 +244,7 @@ function Assessment({
               )
         }
       />
+      {!p && <Button label={l === "en" ? "Enter camp · assess later" : "先进入营地 · 稍后自评"} onPress={()=>save(name.trim() || (l === "en" ? "Explorer" : "探险者"),DEFAULT_RATINGS)} />}
       {index > 0 && (
         <Button label={t(l, "back")} onPress={() => setIndex(index - 1)} />
       )}{" "}
@@ -256,6 +260,7 @@ function Journal({
   onSave,
   onDelete,
   readiness,
+  focusId,
 }: {
   l: Language;
   p: AppData;
@@ -265,10 +270,15 @@ function Journal({
     style?: ClimbStyle;
     minutes?: number;
   };
-  onSave: (v: Session) => void;
+  onSave: (v: Session) => Promise<void>;
+  focusId?: string;
   onDelete: (id: string) => void;
   readiness: Readiness;
 }) {
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const draftId = useRef(uid());
+  const [saveFailure, setSaveFailure] = useState(false);
   const [editing, setEditing] = useState<Session | null>(null);
   const [activity, setActivity] = useState(initial.activity),
     [minutes, setMinutes] = useState(String(initial.minutes || 30)),
@@ -276,7 +286,7 @@ function Journal({
     [sends, setSends] = useState("0"),
     [grade, setGrade] = useState(""),
     [more, setMore] = useState(false),
-    [history, setHistory] = useState(false),
+    [history, setHistory] = useState(!!focusId),
     [notes, setNotes] = useState(""),
     [pain, setPain] = useState(readiness === "pain"),
     [skill, setSkill] = useState(initial.skill),
@@ -299,7 +309,8 @@ function Journal({
       />
     </View>
   );
-  const submit = () => {
+  const submit = async () => {
+    if (savingRef.current) return;
     const duration = Number(minutes),
       a = Number(attempts),
       b = Number(sends);
@@ -318,8 +329,9 @@ function Journal({
     )
       error = "gradeError";
     if (error) return Alert.alert(t(l, "invalid"), t(l, error));
-    onSave({
-      id: editing?.id || uid(),
+    savingRef.current = true; setSaving(true); setSaveFailure(false);
+    try { await onSave({
+      id: editing?.id || draftId.current,
       date: editing?.date || new Date().toISOString(),
       activity,
       duration,
@@ -334,6 +346,8 @@ function Journal({
     });
     setNotes("");
     setEditing(null);
+    draftId.current = uid();
+    } catch { setSaveFailure(true); } finally { savingRef.current=false; setSaving(false); }
   };
   return (
     <>
@@ -362,7 +376,7 @@ function Journal({
       </View>
       <View style={s.panel}>
         {field("minutes", minutes, setMinutes)}
-        {activity === "bouldering" && (
+        {activity === "bouldering" && more && (
           <>
             <View style={s.row}>
               {field("attempts", attempts, setAttempts)}
@@ -386,6 +400,7 @@ function Journal({
             {t(l, "safety")} {t(l, "noXP")}
           </Text>
         )}
+        {field("notes", notes, setNotes, false)}
         <Button
           label={t(l, "more") + (more ? " −" : " +")}
           onPress={() => setMore(!more)}
@@ -437,15 +452,15 @@ function Journal({
                 </View>
               </>
             )}
-            {field("notes", notes, setNotes, false)}
           </>
         )}
-        <Button active label={t(l, "submit")} onPress={submit} />
+        {saveFailure && <Text accessibilityRole="alert" style={s.warning}>{t(l,"saveError")} · {l === "en" ? "Your input is kept. Try again." : "输入已保留，请重试。"}</Text>}
+        <Button active disabled={saving} label={saving ? (l === "en" ? "Saving…" : "正在保存…") : t(l, "submit")} onPress={submit} />
       </View>
       {history && (
         <Sheet title={t(l, "history")} close={() => setHistory(false)}>
           {!p.sessions.length && <Text style={s.muted}>{t(l, "empty")}</Text>}
-          {p.sessions.map((v) => (
+          {[...p.sessions].sort((a,b)=>a.id===focusId?-1:b.id===focusId?1:b.date.localeCompare(a.date)).map((v) => (
             <View style={s.panel} key={v.id}>
               <Text style={s.body}>
                 {t(l, v.activity)} · {v.duration} min · +{sessionXP(v)} XP
@@ -667,6 +682,10 @@ export default function App() {
       minutes?: number;
     }>({ activity: "bouldering", skill: null }),
     [formKey, setFormKey] = useState(0);
+  const [focusId,setFocusId] = useState<string | undefined>();
+  const [completion,setCompletion] = useState<{session:Session;reward:string}|null>(null);
+  const [legacyCamp,setLegacyCamp]=useState(false);
+  const experience=useExperience(tab === "camp" && !completion && loaded && !!p);
   const queue = useRef(Promise.resolve());
   const { height } = useWindowDimensions();
   const [gallery, setGallery] = useState(false);
@@ -720,13 +739,15 @@ export default function App() {
     style?: ClimbStyle,
     minutes?: number,
   ) => {
+    setFocusId(undefined);
+    experience.cue("confirm");
     setInitial({ activity, skill, style, minutes });
     setFormKey((k) => k + 1);
     setQuest(null);
     setTab("journal");
   };
-  const save = (v: Session) => {
-    if (!p) return;
+  const save = async (v: Session) => {
+    if (!p) throw new Error("Profile unavailable");
     const next = logSession(
         { ...p, sessions: p.sessions.filter((s) => s.id !== v.id) },
         v,
@@ -758,9 +779,14 @@ export default function App() {
         (l === "en" ? "Commissions settled" : "委托已结算") +
         ` ×${completed.length}`;
     if (v.pain) message += "\n" + t(l, "noXP");
-    persist(p.sessions.some(s => s.id === v.id) ? next : beginAdventure(next, v));
+    const saved = reconcileWorld(settle(ensureCommissions(p.sessions.some(s => s.id === v.id) ? next : beginAdventure(next,v),readiness)));
+    const pending = queue.current.catch(()=>{}).then(()=>saveProfile(saved));
+    queue.current = pending.catch(()=>{});
+    await pending;
+    profileRef.current=saved; setP(saved); setSaveError(false);
+    experience.cue("saved");
+    setCompletion({session:v,reward:message});
     setTab("camp");
-    setFeedback(message);
   };
   const q = p ? recommendedQuest(p, readiness) : null;
   const xp = p ? totalXP(p) : 0,
@@ -769,6 +795,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <SafeAreaView style={s.screen}>
+      <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <StatusBar barStyle="light-content" backgroundColor={C.bg} />
         {!loaded ? (
           <View style={s.center}>
@@ -817,17 +844,8 @@ export default function App() {
                 >
                   {tab === "camp" && (
                     <>
-                      <View style={s.row}>
-                        <Text style={[s.title, { flex: 1 }]}>
-                          {p.name} · Lv.{lv}
-                        </Text>
-                        <Text style={s.gold}>{xp} XP</Text>
-                      </View>
-                      <Meter
-                        value={xp - bounds.from}
-                        max={bounds.to - bounds.from}
-                      />
-                      <LivingCamp p={p} l={l} save={persist} navigate={setTab} record={() => openLog(readiness === "pain" || readiness === "tired" ? "recovery" : "bouldering", null)} />
+                      <CampHome name={p.name} l={l} count={p.sessions.length} latest={[...p.sessions].sort((a,b)=>b.date.localeCompare(a.date))[0]} reduced={experience.reduce} record={() => openLog(readiness === "pain" || readiness === "tired" ? "recovery" : "bouldering",null)} recall={()=>{const recent=[...p.sessions].sort((a,b)=>b.date.localeCompare(a.date))[0];setFocusId(recent?.id);setFormKey(k=>k+1);setTab("journal");}} />
+                      <Button label={l === "en" ? "Camp companions & collection" : "营地伙伴与旧日收藏"} onPress={()=>setLegacyCamp(true)} />
                       <View style={s.wrap}>
                         {(
                           ["fresh", "normal", "tired", "pain"] as Readiness[]
@@ -846,22 +864,7 @@ export default function App() {
                       {readiness === "pain" && (
                         <Text style={s.warning}>{t(l, "safety")}</Text>
                       )}
-                      <Pressable
-                        accessibilityRole="button"
-                        style={[s.panel, s.row]}
-                        onPress={() => setTab("quests")}
-                      >
-                        <PixelGlyph name={q?.skill || "heart"} size={36} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.muted}>{t(l, "today")}</Text>
-                          <Text style={s.body}>
-                            {l === "en"
-                              ? "Daily & weekly commissions"
-                              : "每日 / 每周随机委托"}
-                          </Text>
-                        </View>
-                        <Text style={s.gold}>→</Text>
-                      </Pressable>
+
                     </>
                   )}
                   {tab === "quests" && (
@@ -1010,6 +1013,7 @@ export default function App() {
                   {tab === "journal" && (
                     <Journal
                       key={formKey}
+                      focusId={focusId}
                       l={l}
                       p={p}
                       initial={initial}
@@ -1055,6 +1059,9 @@ export default function App() {
             )}
             {settings && (
               <Sheet title={t(l, "settings")} close={() => setSettings(false)}>
+                <Button label={experience.muted ? (l === "en" ? "Sound: muted · tap to enable" : "声音：静音 · 点击开启") : (l === "en" ? "Sound: on" : "声音：开启")} onPress={()=>experience.setMuted(!experience.muted)} />
+                <Button label={(l === "en" ? "Reduce motion: " : "减少动效：")+(experience.reduce ? (l === "en" ? "on" : "开启") : (l === "en" ? "off" : "关闭"))} onPress={()=>experience.setReduce(!experience.manualReduce)} />
+                {experience.error && <Text style={s.warning}>{l === "en" ? "Audio or preference storage unavailable." : "声音或偏好设置存储暂不可用。"}</Text>}
                 <Text style={s.body}>{t(l, "language")}</Text>
                 {(["zh-CN", "en"] as Language[]).map((v) => (
                   <Button
@@ -1130,6 +1137,8 @@ export default function App() {
                 ))}
               </Sheet>
             )}
+            {legacyCamp && p && <Sheet title={l === "en" ? "Camp companions" : "营地伙伴"} close={()=>setLegacyCamp(false)}><LivingCamp reduced={experience.reduce} p={p} l={l} save={persist} navigate={v=>{setLegacyCamp(false);setTab(v);}} record={()=>{setLegacyCamp(false);openLog("bouldering",null);}} /></Sheet>}
+            {completion && <Sheet title={l === "en" ? "Journey saved" : "旅程已保存"} close={()=>setCompletion(null)}><Completion session={completion.session} reward={completion.reward} l={l} reduced={experience.reduce} cue={experience.cue} home={()=>setCompletion(null)} recall={()=>{setFocusId(completion.session.id);setCompletion(null);setFormKey(k=>k+1);setTab("journal");}} /></Sheet>}
             {feedback && (
               <Sheet title={t(l, "reward")} close={() => setFeedback(null)}>
                 <RewardArt />
@@ -1144,6 +1153,7 @@ export default function App() {
             )}
           </>
         )}
+      </KeyboardAvoidingView>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -1176,7 +1186,7 @@ const s = StyleSheet.create({
   gold: { color: C.gold, fontSize: 13, fontWeight: "700" },
   warning: { color: C.danger, lineHeight: 20, fontSize: 13 },
   button: {
-    minHeight: 44,
+    minHeight: 48,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderWidth: 1,
@@ -1198,7 +1208,7 @@ const s = StyleSheet.create({
     backgroundColor: C.bg,
     borderWidth: 1,
     borderColor: C.line,
-    minHeight: 46,
+    minHeight: 48,
     padding: 10,
     fontSize: 16,
   },
@@ -1217,7 +1227,7 @@ const s = StyleSheet.create({
     padding: 8,
     borderWidth: 1,
     borderColor: C.gold,
-    minHeight: 44,
+    minHeight: 48,
     justifyContent: "center",
   },
   hotspotText: { color: C.gold, fontSize: 13, fontWeight: "800" },
@@ -1249,8 +1259,8 @@ const s = StyleSheet.create({
     padding: 12,
   },
   close: {
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: 48,
+    minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1271,7 +1281,7 @@ const s = StyleSheet.create({
   },
   level: { color: C.gold, fontWeight: "900", fontSize: 25, lineHeight: 36 },
   nodeRow: {
-    minHeight: 44,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
