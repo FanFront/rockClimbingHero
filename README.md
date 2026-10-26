@@ -8,7 +8,10 @@ record sessions, grow your skill tree, and compare progress over time.
 
 ## What works today
 - Original pixel-aligned mountain art, hero sprite, map and UI icons (SVG).
-- Android app with five screens: Camp, Quests, Hero, Stats, Journal.
+- Android portrait app: interactive pixel Camp, Quests, Hero, Map and quick Journal.
+- Simplified Chinese by default; persistent English switch in Settings.
+- Five-step assessment, character tabs, skill detail sheets and short quest instructions.
+- Map locations unlock from distinct pain-free training days; XP/skill/level feedback uses actual logs.
 - Character creator with self-assessment and repeat assessments.
 - Five RPG attributes: PWR / TEC / END / MOB / MND.
 - Skill tree with distinct practice-day tracking and self-attested demonstrations.
